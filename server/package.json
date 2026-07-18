@@ -1,0 +1,27 @@
+{
+  "name": "augment-poker-server",
+  "version": "0.1.0",
+  "private": true,
+  "description": "증강 포커 멀티플레이 서버 — Colyseus + Express, 서버 권위 구조",
+  "main": "src/index.ts",
+  "type": "commonjs",
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "start": "tsx src/index.ts",
+    "build": "tsc -p .",
+    "smoke": "tsx scripts/smoke.ts"
+  },
+  "dependencies": {
+    "@colyseus/schema": "^3.0.76",
+    "@colyseus/ws-transport": "^0.16.5",
+    "colyseus": "^0.16.5",
+    "express": "^5.2.1"
+  },
+  "devDependencies": {
+    "@types/express": "^5.0.6",
+    "@types/node": "^26.1.1",
+    "colyseus.js": "^0.16.22",
+    "tsx": "^4.23.1",
+    "typescript": "^6.0.3"
+  }
+}

@@ -1,0 +1,47 @@
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+:root {
+  --bg: #081a20;
+  --panel: #0d242c;
+  --text: #dce8ec;
+  --text-dim: #8aa8b1;
+  --gold: #f5c542;
+  --silver: #b8c4cc;
+  --prismatic: #b06ef5;
+  --teal: #4ad9c0;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: 'Segoe UI', 'Malgun Gothic', system-ui, sans-serif;
+  overflow-x: hidden;
+}
+
+button {
+  font-family: inherit;
+  cursor: pointer;
+}
+
+::-webkit-scrollbar {
+  width: 8px;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #23505d;
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-track {
+  background: rgba(0, 0, 0, 0.3);
+}

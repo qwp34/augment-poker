@@ -1,0 +1,44 @@
+[
+  {
+    "id": "aug_flush_boost",
+    "name": "플러시의 축복",
+    "rarity": "silver",
+    "trigger": "on_showdown",
+    "condition": { "handType": "flush" },
+    "effect": { "type": "payout_multiplier", "value": 1.5 },
+    "description": "플러시(이상의 플러시 계열)로 승리 시 배당 1.5배"
+  },
+  {
+    "id": "aug_card_swap",
+    "name": "카드 재구성",
+    "rarity": "gold",
+    "trigger": "on_hand_start",
+    "effect": { "type": "card_swap", "value": 1 },
+    "description": "매 핸드 1회, 내 홀카드 1장을 새 카드로 교체할 수 있다"
+  },
+  {
+    "id": "aug_allin_snipe",
+    "name": "정조준 올인",
+    "rarity": "gold",
+    "trigger": "on_showdown",
+    "condition": { "isAllIn": true },
+    "effect": { "type": "payout_multiplier", "value": 2 },
+    "description": "올인 상태로 승리 시 배당 2배"
+  },
+  {
+    "id": "aug_golden_flip",
+    "name": "황금 뒤집개",
+    "rarity": "prismatic",
+    "trigger": "on_round_start",
+    "effect": { "type": "jokerize_random", "value": 1 },
+    "description": "매 핸드 시작 시 내 홀카드 1장이 조커가 된다 (모든 무늬로 인정)"
+  },
+  {
+    "id": "aug_royal_prophecy",
+    "name": "로열의 예언",
+    "rarity": "prismatic",
+    "trigger": "on_shuffle",
+    "effect": { "type": "shuffle_bias", "value": 0.15 },
+    "description": "셔플 시 낮은 확률로 운명이 개입한다... (연출용 — 브로드웨이 카드가 손에 들어올 확률 소폭 상승)"
+  }
+]
