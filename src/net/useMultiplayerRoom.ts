@@ -351,6 +351,11 @@ export function useMultiplayerRoom(playerName: string) {
     if (gameState?.phase !== 'augment_target') setPendingAugmentTarget(null);
   }, [gameState?.phase]);
 
+  // 음침한 눈으로 본 카드는 그 핸드 동안만 유효 — 다음 라운드 증강 선택에 들어가면 지운다
+  useEffect(() => {
+    if (gameState?.phase === 'augment_select') setLastAugmentReveal(null);
+  }, [gameState?.phase]);
+
   /** 서버가 뽑아 보낸 증강 후보 3개 중 하나를 선택해 전송 */
   const chooseAugment = useCallback(
     (augmentId: string) => {

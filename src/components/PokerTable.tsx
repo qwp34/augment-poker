@@ -8,6 +8,7 @@ import { evaluateBest, CATEGORY_NAMES_KO, type HandCategory } from '../engine/ha
 import type { Card as EngineCard } from '../engine/types';
 import { CATEGORY_SHORT_KO } from '../ui/format';
 import type {
+  AugmentRevealInfo,
   BettingActionType,
   ClientCard,
   ClientGameState,
@@ -61,10 +62,12 @@ interface DiamondSeatProps {
   isDealer: boolean;
   isActive: boolean;
   diamondSlot: number;
+  /** 음침한 눈으로 확인한 이 좌석의 카드 (나에게만 보임) — 없으면 null */
+  reveal: AugmentRevealInfo | null;
 }
 
 /** 상/좌/우/하 마름모 형태로 배치되는 좌석 카드 — 이름/칩/미니 홀카드/보유 증강(항상 공개) */
-function DiamondSeat({ player, isMe, myHole, isDealer, isActive, diamondSlot }: DiamondSeatProps) {
+function DiamondSeat({ player, isMe, myHole, isDealer, isActive, diamondSlot, reveal }: DiamondSeatProps) {
   const holeCards: ClientCard[] = isMe ? myHole : player.revealedHole.length > 0 ? player.revealedHole : [];
   const showBacks = holeCards.length === 0 && !player.isFolded;
 
@@ -93,10 +96,17 @@ function DiamondSeat({ player, isMe, myHole, isDealer, isActive, diamondSlot }: 
       </div>
       <div className="mp-seat-cards">
         {showBacks ? (
-          <>
-            <Card card={asEngineCard(CARD_BACK)} hidden size="sm" />
-            <Card card={asEngineCard(CARD_BACK)} hidden size="sm" />
-          </>
+          [0, 1].map((idx) =>
+            reveal && reveal.cardIndex === idx ? (
+              // 음침한 눈으로 확인한 카드 — 뒷면 대신 실제 카드 + 눈 표식 (나에게만 렌더됨)
+              <span key={idx} className="mp-revealed-card" title="음침한 눈으로 확인한 카드">
+                <Card card={asEngineCard(reveal.card)} size="sm" />
+                <span className="mp-revealed-eye">👁</span>
+              </span>
+            ) : (
+              <Card key={idx} card={asEngineCard(CARD_BACK)} hidden size="sm" />
+            ),
+          )
         ) : (
           holeCards.map((c) => <Card key={c.id} card={asEngineCard(c)} size="sm" />)
         )}
@@ -306,11 +316,13 @@ interface PokerTableProps {
   myHole: ClientCard[];
   mySessionId: string;
   lastResult: ShowdownResult | null;
+  /** 음침한 눈으로 확인한 상대 카드 — 이번 핸드 동안 해당 좌석에 표시 */
+  augmentReveal: AugmentRevealInfo | null;
   onAction: (type: BettingActionType, amount?: number) => void;
 }
 
 /** 포커 테이블 화면 — 상/좌/우/하 마름모 좌석 + 상단 중앙 커뮤니티/팟 + 하단 중앙 내 카드/액션 + 우측 정보 패널 */
-export function PokerTable({ gameState, myHole, mySessionId, lastResult, onAction }: PokerTableProps) {
+export function PokerTable({ gameState, myHole, mySessionId, lastResult, augmentReveal, onAction }: PokerTableProps) {
   const myPlayer = gameState.players.find((p) => p.sessionId === mySessionId) ?? null;
   const isMyTurn = gameState.activePlayerId === mySessionId;
   const activePlayer = gameState.players.find((p) => p.sessionId === gameState.activePlayerId);
@@ -353,6 +365,7 @@ export function PokerTable({ gameState, myHole, mySessionId, lastResult, onActio
                 isDealer={p.seatIndex === gameState.dealerSeat}
                 isActive={p.sessionId === gameState.activePlayerId}
                 diamondSlot={toDisplaySlot(p.seatIndex, mySeatIndex)}
+                reveal={augmentReveal?.targetSessionId === p.sessionId ? augmentReveal : null}
               />
             ))}
 

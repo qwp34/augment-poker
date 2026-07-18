@@ -9,6 +9,7 @@ import { TopBar } from './components/TopBar';
 import { LogPanel } from './components/LogPanel';
 import { MultiplayerLobby } from './components/MultiplayerLobby';
 import { TitleSparkles } from './components/TitleSparkles';
+import { ChipRing } from './components/ChipRing';
 import { findByEffect } from './engine/augmentEngine';
 import { evaluateBest } from './engine/handEvaluator';
 import { handLabel } from './ui/format';
@@ -104,9 +105,12 @@ export default function App() {
             }}
           >
             <span className="chip-btn-side" aria-hidden="true" />
-            <span className="chip-btn-face">
+            <ChipRing />
+            <span className="chip-btn-inner">
               <span className="chip-btn-title">게임 시작</span>
-              <span className="chip-btn-subtitle">혼자서 플레이</span>
+              <span className="chip-btn-subtitle-pill">
+                <span className="chip-btn-subtitle">혼자서 플레이</span>
+              </span>
             </span>
           </motion.button>
           <motion.button
@@ -117,9 +121,12 @@ export default function App() {
             onClick={() => setMultiplayerOpen(true)}
           >
             <span className="chip-btn-side" aria-hidden="true" />
-            <span className="chip-btn-face">
+            <ChipRing />
+            <span className="chip-btn-inner">
               <span className="chip-btn-title">멀티플레이</span>
-              <span className="chip-btn-subtitle">친구와 함께</span>
+              <span className="chip-btn-subtitle-pill">
+                <span className="chip-btn-subtitle">친구와 함께</span>
+              </span>
             </span>
           </motion.button>
         </div>

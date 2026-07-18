@@ -120,11 +120,14 @@
   justify-content: center;
 }
 
-/* 카지노 칩 스타일 원형 버튼 — 기존 gold-btn과 별개 클래스라 다른 화면의 버튼엔 영향 없음 */
-/* 버튼 자체는 투명 컨테이너이고, 두께 레이어(.chip-btn-side)를 먼저 그린 뒤 그 위에
-   칩 얼굴(.chip-btn-face)을 살짝 겹쳐 그려서 옆면이 아래로 삐져나온 것처럼 표현한다.
-   (::after 같은 음수 z-index 트릭은 부모 자신의 배경보다 항상 위에 그려져 무늬를
-   가려버리므로 사용하지 않고, 실제 DOM 자식 두 개를 쌓는 방식으로 구현) */
+/* 카지노 칩 스타일 원형 버튼 — 기존 gold-btn과 별개 클래스라 다른 화면의 버튼엔 영향 없음.
+   참고 이미지의 레이어 구조를 그대로 재현:
+   ① .chip-btn-side   — 맨 아래, 두께감을 위해 살짝 아래로 어긋난 원
+   ② .chip-btn-ring   — 짙은 회색/네이비 바깥 링 + 사각 노치 8개(실제 DOM 요소로 가장자리에서
+                         바깥으로 튀어나오게 배치 — ChipRing.tsx)
+   ③ .chip-btn-inner  — 어두운 남색/검정 그라데이션 안쪽 원, box-shadow 다중 inset으로
+                         이중 얇은 링 테두리(outer thin ring + inner thin ring) 표현
+   ④ 텍스트 2줄 — 위: 금색 그라데이션 큰 타이틀, 아래: 검은 알약(pill) 안 작은 골드 텍스트 */
 .chip-btn {
   width: 168px;
   height: 168px;
@@ -145,54 +148,63 @@
   background: var(--chip-side);
 }
 
-/* 칩 얼굴 — 어두운 남색/검정 베이스 + 테두리를 따라 밝은 회색 사각 노치 8개
-   + 이중 원형 테두리(바깥 border, 안쪽은 radial-gradient로 그린 얇은 링) 구조.
-   레이어 순서(앞→뒤): ① 중앙 페이스 + 안쪽 링 라인(radial-gradient, 80%부터 투명)
-   ② 노치 밴드(repeating-conic-gradient, 8개 사각 노치 + 투명 간격)
-   ③ 노치 밴드 바탕색(background-color)
-   테두리/링 라인/노치 모두 한 단계 더 슬림하게 조정 */
-.chip-btn-face {
+.chip-btn-ring {
   position: absolute;
-  left: 0;
-  top: 0;
-  width: 100%;
-  height: 100%;
+  left: 50%;
+  top: 50%;
+  width: 156px;
+  height: 156px;
+  margin: -78px 0 0 -78px;
+  border-radius: 50%;
+  background: linear-gradient(160deg, #767d86 0%, #565d66 45%, #383e46 100%);
+  box-shadow:
+    0 0 22px var(--chip-glow),
+    inset 0 2px 3px rgba(255, 255, 255, 0.28),
+    inset 0 -5px 10px rgba(0, 0, 0, 0.55),
+    0 10px 20px rgba(0, 0, 0, 0.55);
+  transition: box-shadow 0.18s;
+}
+
+.chip-btn-notch {
+  position: absolute;
+  width: 22px;
+  height: 11px;
+  border-radius: 3px;
+  background: linear-gradient(160deg, #eef1f3, #b9c1c8);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.45);
+}
+
+.chip-btn-inner {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 138px;
+  height: 138px;
+  margin: -69px 0 0 -69px;
   border-radius: 50%;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 3px;
-  border: 1px solid #9aa1a8;
-  background-color: #14181d;
-  background-image:
-    radial-gradient(
-      circle 84px at 50% 46%,
-      #262d35 0%,
-      #12161b 56%,
-      #0b0e11 64%,
-      #9aa1a8 66.7%,
-      #9aa1a8 67.3%,
-      transparent 80%
-    ),
-    repeating-conic-gradient(from -1.5deg, #ccd2d8 0deg 3deg, transparent 3deg 45deg);
+  gap: 7px;
+  background: radial-gradient(circle at 50% 32%, #2c333e 0%, #171c24 55%, #0a0d12 100%);
   box-shadow:
-    0 0 22px var(--chip-glow),
-    inset 0 3px 7px rgba(255, 255, 255, 0.16),
-    inset 0 -7px 14px rgba(0, 0, 0, 0.6),
-    0 10px 20px rgba(0, 0, 0, 0.55);
-  transition: box-shadow 0.18s;
+    inset 0 0 0 1.5px rgba(199, 206, 213, 0.4),
+    inset 0 0 0 5px rgba(0, 0, 0, 0.55),
+    inset 0 0 0 6px rgba(199, 206, 213, 0.2),
+    inset 0 5px 10px rgba(255, 255, 255, 0.07),
+    inset 0 -10px 18px rgba(0, 0, 0, 0.6);
 }
 
 .chip-btn:hover {
   transform: translateY(-6px) scale(1.05);
 }
 
-.chip-btn:hover .chip-btn-face {
+.chip-btn:hover .chip-btn-ring {
   box-shadow:
-    0 0 36px var(--chip-glow-strong),
-    inset 0 3px 7px rgba(255, 255, 255, 0.22),
-    inset 0 -7px 14px rgba(0, 0, 0, 0.6),
+    0 0 38px var(--chip-glow-strong),
+    inset 0 2px 3px rgba(255, 255, 255, 0.32),
+    inset 0 -5px 10px rgba(0, 0, 0, 0.55),
     0 14px 26px rgba(0, 0, 0, 0.65);
 }
 
@@ -212,20 +224,31 @@
 
 .chip-btn-title {
   font-family: var(--font-display);
-  font-size: 1.05rem;
-  color: #f2f5f7;
-  letter-spacing: -0.3px;
-  line-height: 1.15;
+  font-size: 1.4rem;
+  letter-spacing: -0.5px;
+  line-height: 1.1;
   white-space: nowrap;
-  text-shadow: 0 2px 4px rgba(0, 0, 0, 0.7);
+  background: linear-gradient(180deg, #fff2c4 0%, #f5c542 45%, #c9861f 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  filter: drop-shadow(0 2px 2px rgba(0, 0, 0, 0.65));
+}
+
+.chip-btn-subtitle-pill {
+  background: rgba(0, 0, 0, 0.55);
+  border-radius: 999px;
+  padding: 3px 11px;
+  box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.6), 0 1px 1px rgba(255, 255, 255, 0.06);
 }
 
 .chip-btn-subtitle {
-  font-size: 0.68rem;
+  font-family: var(--font-body);
+  font-size: 0.62rem;
+  font-weight: 700;
   color: var(--chip-subtitle);
   letter-spacing: 0.2px;
   white-space: nowrap;
-  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.6);
 }
 
 /* ── 상단 바 ── */
@@ -1731,6 +1754,30 @@
 .mp-target-suit-btn:hover {
   border-color: var(--gold);
   transform: scale(1.08);
+}
+
+/* ── 음침한 눈 — 상대 좌석에서 공개된 카드 표시 (나에게만 보임) ── */
+.mp-revealed-card {
+  position: relative;
+  display: inline-block;
+  border-radius: 6px;
+  box-shadow: 0 0 10px rgba(176, 110, 245, 0.75), 0 0 20px rgba(176, 110, 245, 0.35);
+}
+
+.mp-revealed-eye {
+  position: absolute;
+  top: -8px;
+  right: -8px;
+  font-size: 0.85rem;
+  background: rgba(30, 12, 50, 0.95);
+  border: 1px solid var(--prismatic);
+  border-radius: 50%;
+  width: 20px;
+  height: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 0 8px rgba(176, 110, 245, 0.7);
 }
 
 /* ── 쇼다운 결과 배너 ── */
