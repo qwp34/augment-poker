@@ -26,7 +26,7 @@ export async function bootstrap(port = DEFAULT_PORT) {
     transport: new WebSocketTransport({ server: httpServer }),
   });
 
-  gameServer.define('poker', PokerRoom);
+  gameServer.define('poker_room', PokerRoom);
 
   // 디버깅용 Colyseus Monitor 패널
   app.use('/colyseus', monitor());

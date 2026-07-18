@@ -783,6 +783,116 @@
   z-index: 9;
 }
 
+/* ── 멀티플레이 로비 ── */
+.mp-shell {
+  position: relative;
+}
+
+.mp-lobby {
+  gap: 20px;
+}
+
+.mp-title {
+  font-size: 2.2rem;
+}
+
+.mp-close {
+  position: absolute;
+  top: 20px;
+  right: 24px;
+  z-index: 20;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  border: 1px solid var(--text-dim);
+  background: rgba(0, 0, 0, 0.25);
+  color: var(--text);
+  font-size: 1rem;
+}
+
+.mp-toast-error {
+  position: fixed;
+  top: 70px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 30;
+  background: rgba(60, 12, 12, 0.92);
+  border: 1px solid #ff9a9a;
+  color: #ffdada;
+  padding: 8px 18px;
+  border-radius: 8px;
+  font-size: 0.88rem;
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.5);
+}
+
+.mp-close:hover {
+  border-color: var(--gold);
+  color: var(--gold);
+}
+
+.mp-form,
+.mp-connected,
+.mp-error-box {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+  z-index: 2;
+}
+
+.mp-input {
+  border: 1px solid var(--text-dim);
+  background: var(--panel);
+  color: var(--text);
+  border-radius: 8px;
+  padding: 10px 14px;
+  font-size: 0.95rem;
+  min-width: 220px;
+  text-align: center;
+}
+
+.mp-input:focus {
+  outline: none;
+  border-color: var(--gold);
+}
+
+.mp-link-row {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+
+.mp-link-input {
+  min-width: 320px;
+  text-align: left;
+}
+
+.mp-hint {
+  color: var(--text-dim);
+  font-size: 0.85rem;
+}
+
+.mp-error {
+  color: #ff9a9a;
+  font-size: 1rem;
+  max-width: 420px;
+  text-align: center;
+}
+
+.mp-multiplayer-btn {
+  border: 1px solid var(--text-dim);
+  background: transparent;
+  color: var(--text-dim);
+  border-radius: 8px;
+  padding: 9px 22px;
+  font-size: 0.9rem;
+}
+
+.mp-multiplayer-btn:hover {
+  border-color: var(--teal);
+  color: var(--teal);
+}
+
 /* ── 증강 선택 오버레이 ── */
 .augment-overlay {
   position: absolute;
@@ -911,6 +1021,313 @@
 .augment-chip.rarity-prismatic {
   border-color: var(--prismatic);
   color: var(--prismatic);
+}
+
+/* ═══ 멀티플레이 인게임 화면 ═══ */
+
+/* ── 증강 선택 (LoL 아레나 스타일 — 호버 시 설명 확장) ── */
+.mp-augment-screen {
+  justify-content: center;
+}
+
+.mp-augment-waiting {
+  margin-top: 10px;
+  animation: blink 1s ease-in-out infinite alternate;
+}
+
+.mp-augment-pick-row {
+  display: flex;
+  gap: 24px;
+  flex-wrap: wrap;
+  justify-content: center;
+  perspective: 900px;
+}
+
+.mp-augment-pick {
+  width: 210px;
+  min-height: 148px;
+  background: linear-gradient(170deg, #14303a, #0c1e26);
+  border-radius: 12px;
+  padding: 22px 18px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  text-align: center;
+  color: var(--text);
+  border: 2px solid transparent;
+  cursor: pointer;
+  transition: transform 0.2s, min-height 0.25s, box-shadow 0.2s;
+}
+
+.mp-augment-pick:hover,
+.mp-augment-pick:focus-visible {
+  transform: translateY(-10px) scale(1.05);
+  min-height: 232px;
+}
+
+.mp-augment-pick.rarity-silver {
+  border-color: var(--silver);
+}
+.mp-augment-pick.rarity-silver:hover {
+  box-shadow: 0 0 26px rgba(184, 196, 204, 0.5);
+}
+.mp-augment-pick.rarity-gold {
+  border-color: var(--gold);
+}
+.mp-augment-pick.rarity-gold:hover {
+  box-shadow: 0 0 26px rgba(245, 197, 66, 0.55);
+}
+.mp-augment-pick.rarity-prismatic {
+  border-color: var(--prismatic);
+  background: linear-gradient(170deg, #22143a, #14303a);
+}
+.mp-augment-pick.rarity-prismatic:hover {
+  box-shadow: 0 0 30px rgba(176, 110, 245, 0.65);
+}
+
+.mp-augment-pick-desc {
+  font-size: 0.86rem;
+  color: var(--text-dim);
+  line-height: 1.5;
+  max-height: 0;
+  opacity: 0;
+  overflow: hidden;
+  transition: max-height 0.25s ease, opacity 0.2s ease;
+}
+
+.mp-augment-pick:hover .mp-augment-pick-desc,
+.mp-augment-pick:focus-visible .mp-augment-pick-desc {
+  max-height: 160px;
+  opacity: 1;
+}
+
+/* ── 포커 테이블 화면 ── */
+.mp-table-screen {
+  align-items: center;
+  justify-content: flex-start;
+  gap: 10px;
+  padding-top: 18px;
+}
+
+.mp-round-badge {
+  position: relative;
+  z-index: 3;
+  color: var(--text-dim);
+  font-size: 0.85rem;
+  letter-spacing: 1px;
+}
+
+.mp-table-oval {
+  position: relative;
+  z-index: 2;
+  width: min(720px, 92vw);
+  aspect-ratio: 16 / 10;
+  margin: 26px auto 6px;
+  border-radius: 50%;
+  background:
+    radial-gradient(ellipse 70% 60% at 50% 45%, rgba(30, 90, 105, 0.35), transparent 70%),
+    radial-gradient(ellipse at 50% 45%, #0f333d, #081a20 80%);
+  border: 10px solid #123039;
+  box-shadow: 0 0 0 3px #0a1f26, 0 20px 50px rgba(0, 0, 0, 0.6), inset 0 0 60px rgba(0, 0, 0, 0.5);
+}
+
+.mp-table-oval .board {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+}
+
+/* seatIndex 0~3을 시계 방향(하/우/상/좌)으로 고정 배치 */
+.mp-seat {
+  position: absolute;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 5px;
+  width: 148px;
+  transition: filter 0.2s, opacity 0.2s;
+}
+
+.mp-seat-pos-0 {
+  top: 100%;
+  left: 50%;
+  transform: translate(-50%, -38%);
+}
+.mp-seat-pos-1 {
+  top: 50%;
+  left: 100%;
+  transform: translate(-48%, -50%);
+}
+.mp-seat-pos-2 {
+  top: 0%;
+  left: 50%;
+  transform: translate(-50%, -62%);
+}
+.mp-seat-pos-3 {
+  top: 50%;
+  left: 0%;
+  transform: translate(-52%, -50%);
+}
+
+.mp-seat-cards {
+  display: flex;
+  gap: 4px;
+}
+
+.mp-seat-info {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  background: rgba(6, 18, 22, 0.8);
+  border: 1px solid #23505d;
+  border-radius: 8px;
+  padding: 4px 10px;
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+
+.mp-seat-last-action {
+  font-size: 0.72rem;
+  color: #6fd0e8;
+}
+
+.mp-seat-augments {
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+  justify-content: center;
+  max-width: 150px;
+}
+
+.mp-seat-folded {
+  opacity: 0.4;
+  filter: grayscale(0.85);
+}
+
+.mp-seat-active .mp-seat-info {
+  border-color: var(--teal);
+  box-shadow: 0 0 14px rgba(74, 217, 192, 0.55);
+}
+
+.mp-seat-my-turn .mp-seat-info {
+  border-color: var(--gold);
+  animation: my-turn-pulse 1s ease-in-out infinite alternate;
+}
+
+@keyframes my-turn-pulse {
+  from {
+    box-shadow: 0 0 8px rgba(245, 197, 66, 0.45);
+  }
+  to {
+    box-shadow: 0 0 24px rgba(245, 197, 66, 0.95);
+  }
+}
+
+.mp-dealer-chip {
+  position: absolute;
+  top: -10px;
+  right: -6px;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 35% 30%, #fff, #e8dcae 60%, #a87c14);
+  color: #5a3f00;
+  font-weight: 900;
+  font-size: 0.7rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.5);
+  z-index: 3;
+}
+
+/* ── 하단 베팅 액션 ── */
+.mp-action-dock {
+  position: relative;
+  z-index: 3;
+  min-height: 56px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding-bottom: 18px;
+}
+
+.mp-action-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+
+.mp-raise-group {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.mp-raise-input {
+  width: 90px;
+  height: 44px;
+  border-radius: 5px;
+  border: 1px solid #4a6a76;
+  background: var(--panel);
+  color: var(--text);
+  text-align: center;
+  font-size: 0.95rem;
+}
+
+.mp-waiting-turn {
+  color: var(--text-dim);
+  font-size: 0.95rem;
+  animation: blink 1s ease-in-out infinite alternate;
+}
+
+/* ── 쇼다운 결과 배너 ── */
+.mp-result-banner {
+  position: absolute;
+  top: 6%;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 10;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  background: rgba(8, 20, 24, 0.94);
+  border: 2px solid var(--gold);
+  border-radius: 14px;
+  padding: 16px 26px;
+  box-shadow: 0 0 30px rgba(245, 197, 66, 0.4), 0 10px 30px rgba(0, 0, 0, 0.6);
+  max-width: 92%;
+}
+
+.mp-result-line {
+  text-align: center;
+  color: var(--text);
+  font-size: 1.05rem;
+  line-height: 2.1;
+}
+
+.mp-result-line .hand-capsule,
+.mp-result-line .mp-result-payout,
+.mp-result-line .mp-result-multiplier {
+  display: inline-block;
+  margin: 0 6px;
+  vertical-align: middle;
+}
+
+.mp-result-payout {
+  color: var(--gold);
+  font-weight: 800;
+}
+
+.mp-result-multiplier {
+  color: #ff9a3d;
+  font-weight: 900;
+  font-size: 1.15rem;
+  text-shadow: 0 0 12px rgba(255, 154, 61, 0.7);
 }
 
 /* ── 반응형 ── */

@@ -1,9 +1,9 @@
 /**
  * 스모크 테스트 — 서버를 in-process로 띄우고 클라이언트 2명이 실제로 접속해
- * [증강 선택 → 베팅 → 쇼다운 → 다음 라운드]를 자동 플레이하며 검증한다.
+ * [방장 게임 시작 → 증강 선택 → 베팅 → 쇼다운 → 다음 라운드]를 자동 플레이하며 검증한다.
  *
  * 검증 항목:
- *  1. 입장 2명 → 게임 자동 시작, 증강 3개 제시
+ *  1. 입장 2명 → 방장이 "게임 시작"을 눌러야 라운드가 시작됨, 증강 3개 제시
  *  2. 홀카드는 개별 메시지로만 수신 (동기화 상태에 비공개)
  *  3. 잘못된 레이즈 금액(-500) → 서버가 거부
  *  4. 베팅 진행 → 쇼다운 result 수신 → 라운드 2 진입
@@ -43,7 +43,7 @@ function autoPlay(room: Room, label: string) {
     if (!me) return;
 
     // 증강 선택
-    if (st.phase === 'augment' && me.augmentChoices?.length > 0) {
+    if (st.phase === 'augment_select' && me.augmentChoices?.length > 0) {
       const key = `aug-${st.round}`;
       if (!done.has(key)) {
         done.add(key);
@@ -52,10 +52,11 @@ function autoPlay(room: Room, label: string) {
       }
     }
 
-    // 내 차례면 자동 체크/콜
-    if (st.phase === 'betting' && st.activePlayerId === room.sessionId && !me.folded && !me.allIn) {
+    // 내 차례면 자동 체크/콜 (preflop/flop/turn/river 각각이 곧 phase)
+    const BETTING_PHASES = new Set(['preflop', 'flop', 'turn', 'river']);
+    if (BETTING_PHASES.has(st.phase) && st.activePlayerId === room.sessionId && !me.isFolded && !me.allIn) {
       const toCall = st.currentBet - me.streetBet;
-      const key = `act-${st.round}-${st.street}-${st.currentBet}-${me.streetBet}-${me.hasActed}`;
+      const key = `act-${st.round}-${st.phase}-${st.currentBet}-${me.streetBet}-${me.hasActed}`;
       if (!done.has(key)) {
         done.add(key);
         // 첫 차례에 한 번, 조작된 레이즈 값을 보내 서버 검증을 확인
@@ -65,7 +66,7 @@ function autoPlay(room: Room, label: string) {
           room.send('action', { type: 'raise', amount: -500 });
         }
         room.send('action', toCall > 0 ? { type: 'call' } : { type: 'check' });
-        log(`[${label}] 액션: ${toCall > 0 ? `콜 ${toCall}` : '체크'} (${st.street})`);
+        log(`[${label}] 액션: ${toCall > 0 ? `콜 ${toCall}` : '체크'} (${st.phase})`);
       }
     }
   });
@@ -78,18 +79,23 @@ async function main() {
   const clientA = new Client(`ws://localhost:${PORT}`);
   const clientB = new Client(`ws://localhost:${PORT}`);
 
-  const roomA = await clientA.joinOrCreate('poker', { name: '영희' });
+  const roomA = await clientA.joinOrCreate('poker_room', { name: '영희' });
   autoPlay(roomA, 'A:영희');
-  const roomB = await clientB.joinOrCreate('poker', { name: '철수' });
+  const roomB = await clientB.joinOrCreate('poker_room', { name: '철수' });
   autoPlay(roomB, 'B:철수');
   log('클라이언트 2명 입장 완료');
 
+  // 방장(첫 입장자)이 "게임 시작" — 사람이 4명 미만이므로 남은 좌석은 봇으로 채워진다
+  roomA.send('startGame');
+  log('방장이 게임 시작 요청 전송');
+
   // 라운드 2 베팅 진입(= 1라운드 전체 루프 완주)까지 대기
+  const BETTING_PHASES = new Set(['preflop', 'flop', 'turn', 'river']);
   const deadline = Date.now() + 40_000;
   await new Promise<void>((resolve, reject) => {
     const timer = setInterval(() => {
       const st = roomA.state?.toJSON() as any;
-      if (st?.round >= 2 && st?.phase === 'betting') {
+      if (st?.round >= 2 && BETTING_PHASES.has(st?.phase)) {
         clearInterval(timer);
         resolve();
       } else if (Date.now() > deadline) {

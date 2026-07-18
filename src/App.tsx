@@ -7,15 +7,19 @@ import { BettingPanel } from './components/BettingPanel';
 import { WinBanner } from './components/WinBanner';
 import { TopBar } from './components/TopBar';
 import { LogPanel } from './components/LogPanel';
+import { MultiplayerLobby } from './components/MultiplayerLobby';
 import { findByEffect } from './engine/augmentEngine';
 import { evaluateBest } from './engine/handEvaluator';
 import { handLabel } from './ui/format';
 import { useCountUp } from './ui/useCountUp';
 import { sfx } from './ui/sfx';
+import { getRoomIdFromPath } from './net/colyseusClient';
 import './App.css';
 
 export default function App() {
   const [started, setStarted] = useState(false);
+  // 공유 링크(/room/:roomId)로 들어온 경우 곧바로 멀티플레이 로비를 연다
+  const [multiplayerOpen, setMultiplayerOpen] = useState(() => !!getRoomIdFromPath());
   const phase = useGameStore((s) => s.phase);
   const playerStack = useGameStore((s) => s.playerStack);
   const botStack = useGameStore((s) => s.botStack);
@@ -60,6 +64,16 @@ export default function App() {
   const playerWon = outcome?.winner === 'player';
   const showResult = phase === 'roundResult';
 
+  const closeMultiplayer = () => {
+    window.history.pushState(null, '', '/');
+    setMultiplayerOpen(false);
+  };
+
+  // ── 멀티플레이 로비 (링크 공유 입장 / 방 생성) ──
+  if (multiplayerOpen) {
+    return <MultiplayerLobby onClose={closeMultiplayer} />;
+  }
+
   // ── 타이틀 화면 ──
   if (!started) {
     return (
@@ -93,6 +107,15 @@ export default function App() {
           }}
         >
           게임 시작
+        </motion.button>
+        <motion.button
+          className="mp-multiplayer-btn"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ delay: 0.7 }}
+          onClick={() => setMultiplayerOpen(true)}
+        >
+          🌐 친구와 함께 플레이
         </motion.button>
       </div>
     );

@@ -4,12 +4,13 @@
  * 원칙:
  *  - 셔플/딜링/판정은 전부 서버에서만 수행 (덱·홀카드는 스키마 밖 private 필드)
  *  - 클라이언트 메시지는 전부 검증 후 적용 (차례, phase, 금액 정수/범위, 증강 소유 여부)
- *  - 게임 루프: [augment 선택] → betting(프리플랍→리버) → showdown → roundResult → 다음 라운드
+ *  - 게임 루프: waiting → augment_select → preflop → flop → turn → river → showdown
+ *    → round_end → (다음 라운드는 다시 augment_select로 순환, 증강은 라운드 간 누적)
  */
 
 import { Room, type Client, type Delayed } from 'colyseus';
 import { PokerState, PlayerState, toCardSchema, type Phase } from '../schema/PokerState';
-import type { Card, Suit } from '../engine/types';
+import type { Card, Street, Suit } from '../engine/types';
 import { SUITS } from '../engine/types';
 import { createDeck, shuffle } from '../engine/deck';
 import { evaluateBest, compareHands, type HandResult } from '../engine/handEvaluator';
@@ -19,16 +20,23 @@ import {
   findByEffect,
   type Augment,
 } from '../engine/augmentEngine';
+import { decideBotAction, type BotDecision, type BotPersona } from '../engine/botAI';
 import augmentsData from '../data/augments.json';
 
 const AUGMENT_POOL = augmentsData as Augment[];
 
 const START_STACK = 5000;
-const ANTE = 100;
+const SMALL_BLIND = 50;
+const BIG_BLIND = 100;
 const MAX_ROUNDS = 5;
 const TURN_TIMEOUT_MS = 30_000;
 const AUGMENT_TIMEOUT_MS = 20_000;
 const RESULT_DELAY_MS = 5_000;
+const BOT_ACT_DELAY_MIN_MS = 600;
+const BOT_ACT_DELAY_MAX_MS = 1_400;
+
+/** 베팅 액션을 받는 phase 집합 — preflop/flop/turn/river 각각이 곧 스트리트다 */
+const BETTING_PHASES = new Set<Phase>(['preflop', 'flop', 'turn', 'river']);
 
 type ActionMessage = { type?: unknown; amount?: unknown };
 
@@ -41,14 +49,22 @@ export class PokerRoom extends Room<PokerState> {
   private board: Card[] = [];
   /** 이번 라운드 각 플레이어에게 제시된 증강 선택지 (검증용 원본) */
   private pendingChoices = new Map<string, Augment[]>();
+  /** 이번 라운드 시작 시점에 착석해 있던 플레이어 — 라운드 도중 합류한 인원은 다음 라운드부터 참여 */
+  private roundRosterIds = new Set<string>();
+  /** 봇 sessionId → 페르소나 (생성 시 랜덤 배정, 게임 내내 유지) */
+  private botPersonas = new Map<string, BotPersona>();
+  /** 이번 스트리트에 발생한 레이즈 횟수 (봇의 재레이즈 억제용) */
+  private raisesThisStreet = 0;
 
-  private dealerIndex = 0;
   private turnTimer?: Delayed;
   private augmentTimer?: Delayed;
 
   onCreate() {
     this.state = new PokerState();
     this.state.maxRounds = MAX_ROUNDS;
+    this.state.smallBlind = SMALL_BLIND;
+    this.state.bigBlind = BIG_BLIND;
+    this.state.minRaise = BIG_BLIND;
 
     this.onMessage('action', (client, message: ActionMessage) => this.handleAction(client, message));
     this.onMessage('chooseAugment', (client, message: { id?: unknown }) =>
@@ -57,21 +73,62 @@ export class PokerRoom extends Room<PokerState> {
     this.onMessage('swapCard', (client, message: { index?: unknown }) =>
       this.handleSwapCard(client, message),
     );
+    this.onMessage('startGame', (client) => this.handleStartGame(client));
   }
 
-  onJoin(client: Client, options?: { name?: unknown }) {
+  onJoin(client: Client, options?: { name?: unknown; isBot?: unknown }) {
     const p = new PlayerState();
     p.sessionId = client.sessionId;
+    p.seatIndex = this.assignSeat();
+    p.isBot = options?.isBot === true;
     const rawName = typeof options?.name === 'string' ? options.name.trim() : '';
-    p.name = rawName.slice(0, 12) || `플레이어${this.state.players.size + 1}`;
+    p.name = rawName.slice(0, 12) || `플레이어${p.seatIndex + 1}`;
     p.stack = START_STACK;
+    // 게임이 이미 진행 중이면 이번 핸드는 관전, 다음 라운드부터 합류
+    if (this.state.phase !== 'waiting') p.isFolded = true;
     this.state.players.set(client.sessionId, p);
 
-    // MVP: 2명이 모이면 즉시 시작하고 방을 잠근다
-    if (this.state.players.size >= 2 && this.state.phase === 'waiting') {
-      void this.lock();
-      this.state.round = 1;
-      this.beginRound();
+    // 대기실에서 가장 먼저 들어온 사람이 방장 — "게임 시작"은 방장만 누를 수 있다
+    if (this.state.phase === 'waiting' && !this.state.hostSessionId) {
+      this.state.hostSessionId = client.sessionId;
+    }
+    if (this.state.players.size >= this.maxClients) void this.lock();
+  }
+
+  /** 빈 좌석 중 가장 낮은 번호를 배정 */
+  private assignSeat(): number {
+    const used = new Set([...this.state.players.values()].map((p) => p.seatIndex));
+    for (let seat = 0; seat < this.maxClients; seat++) {
+      if (!used.has(seat)) return seat;
+    }
+    throw new Error('빈 좌석이 없습니다');
+  }
+
+  /** 방장이 "게임 시작"을 누르면: 빈 좌석을 봇으로 채우고 방을 잠근 뒤 라운드 진행 */
+  private handleStartGame(client: Client) {
+    if (this.state.phase !== 'waiting') return this.reject(client, '이미 게임이 시작되었습니다');
+    if (client.sessionId !== this.state.hostSessionId)
+      return this.reject(client, '방장만 게임을 시작할 수 있습니다');
+
+    this.fillWithBots();
+    void this.lock();
+    this.state.round = 1;
+    this.beginRound();
+  }
+
+  /** 빈 좌석을 봇 PlayerState로 채운다 (isBot: true) */
+  private fillWithBots() {
+    const used = new Set([...this.state.players.values()].map((p) => p.seatIndex));
+    for (let seat = 0; seat < this.maxClients; seat++) {
+      if (used.has(seat)) continue;
+      const bot = new PlayerState();
+      bot.sessionId = `bot-seat-${seat}`;
+      bot.seatIndex = seat;
+      bot.isBot = true;
+      bot.name = `AI 봇 ${seat + 1}`;
+      bot.stack = START_STACK;
+      this.state.players.set(bot.sessionId, bot);
+      this.botPersonas.set(bot.sessionId, Math.random() < 0.5 ? 'aggressive' : 'cautious');
     }
   }
 
@@ -79,12 +136,16 @@ export class PokerRoom extends Room<PokerState> {
     const p = this.state.players.get(client.sessionId);
     if (!p) return;
     p.connected = false;
-    p.folded = true;
+    p.isFolded = true;
     this.pendingChoices.delete(client.sessionId);
 
     const remaining = this.seatOrder().filter((o) => o.connected);
     if (this.state.phase === 'waiting' || this.state.phase === 'gameOver') {
       this.state.players.delete(client.sessionId);
+      if (this.state.hostSessionId === client.sessionId) {
+        const next = this.seatOrder()[0];
+        this.state.hostSessionId = next ? next.sessionId : '';
+      }
       return;
     }
     if (remaining.length < 2) {
@@ -101,19 +162,18 @@ export class PokerRoom extends Room<PokerState> {
       }
       return this.endGame('상대 퇴장');
     }
-    if (this.state.phase === 'augment') return this.checkAllChosen();
-    if (this.state.phase === 'betting') {
-      if (this.state.activePlayerId === client.sessionId) this.resolveAfterAction();
-      else this.resolveAfterAction();
-    }
+    if (this.state.phase === 'augment_select') return this.checkAllChosen();
+    if (BETTING_PHASES.has(this.state.phase)) this.resolveAfterAction();
   }
 
   // ─────────────────────────── 라운드 / 증강 선택 phase ───────────────────────────
 
   /** 라운드 시작: 각 플레이어에게 증강 3개 제시 (기획서 4장) */
   private beginRound() {
-    this.setPhase('augment');
+    this.setPhase('augment_select');
     this.pendingChoices.clear();
+    this.roundRosterIds = new Set(this.state.players.keys());
+    this.advanceDealer();
 
     let anyChoices = false;
     for (const p of this.seatOrder()) {
@@ -124,15 +184,25 @@ export class PokerRoom extends Room<PokerState> {
       anyChoices = true;
       this.pendingChoices.set(p.sessionId, choices);
       choices.forEach((c) => p.augmentChoices.push(c.id));
+      // 봇은 사람의 선택을 기다리지 않고 곧바로 하나를 고른다
+      if (p.isBot) this.chooseAugmentForBot(p, choices);
     }
 
-    if (!anyChoices) return this.startHand();
+    if (!anyChoices || this.pendingChoices.size === 0) return this.startHand();
     // 제한시간 내 미선택 시 자동 선택
     this.augmentTimer = this.clock.setTimeout(() => this.autoPickAugments(), AUGMENT_TIMEOUT_MS);
   }
 
+  /** 봇의 증강 선택 — 지금은 무작위, 추후 botAI 판단 로직과 함께 확장 가능 */
+  private chooseAugmentForBot(p: PlayerState, choices: Augment[]) {
+    const chosen = choices[Math.floor(Math.random() * choices.length)];
+    p.augmentIds.push(chosen.id);
+    p.augmentChoices.clear();
+    this.pendingChoices.delete(p.sessionId);
+  }
+
   private handleChooseAugment(client: Client, message: { id?: unknown }) {
-    if (this.state.phase !== 'augment') return;
+    if (this.state.phase !== 'augment_select') return;
     const choices = this.pendingChoices.get(client.sessionId);
     if (!choices) return; // 선택지가 없거나 이미 선택함
 
@@ -154,7 +224,7 @@ export class PokerRoom extends Room<PokerState> {
       const p = this.state.players.get(sessionId);
       if (!p || !p.connected) this.pendingChoices.delete(sessionId);
     }
-    if (this.pendingChoices.size === 0 && this.state.phase === 'augment') {
+    if (this.pendingChoices.size === 0 && this.state.phase === 'augment_select') {
       this.augmentTimer?.clear();
       this.startHand();
     }
@@ -169,7 +239,7 @@ export class PokerRoom extends Room<PokerState> {
       }
     }
     this.pendingChoices.clear();
-    if (this.state.phase === 'augment') this.startHand();
+    if (this.state.phase === 'augment_select') this.startHand();
   }
 
   // ─────────────────────────── 핸드 시작 / 딜링 ───────────────────────────
@@ -177,17 +247,17 @@ export class PokerRoom extends Room<PokerState> {
   /** 핸드 시작 — 셔플·딜링은 서버에서만. 홀카드는 각자에게 개별 전송 */
   private startHand() {
     const st = this.state;
-    st.street = 'preflop';
     st.pot = 0;
     st.currentBet = 0;
-    st.minRaise = ANTE;
+    this.raisesThisStreet = 0;
     st.community.clear();
     this.board = [];
     this.holes.clear();
     this.deck = shuffle(createDeck());
 
     for (const p of this.seatOrder()) {
-      p.folded = !p.connected || p.stack <= 0; // 빈 스택은 이번 핸드 자동 관전
+      if (!this.roundRosterIds.has(p.sessionId)) continue; // 라운드 도중 합류 → 다음 라운드부터 참여
+      p.isFolded = !p.connected || p.stack <= 0; // 빈 스택은 이번 핸드 자동 관전
       p.allIn = false;
       p.hasActed = false;
       p.streetBet = 0;
@@ -199,13 +269,8 @@ export class PokerRoom extends Room<PokerState> {
     const active = this.actingPlayers();
     if (active.length < 2) return this.endGame('플레이 가능 인원 부족');
 
-    // 앤티
-    for (const p of active) {
-      const ante = Math.min(ANTE, p.stack);
-      p.stack -= ante;
-      st.pot += ante;
-      if (p.stack === 0) p.allIn = true;
-    }
+    // 블라인드 — 딜러 다음 두 자리가 스몰/빅 블라인드를 강제 베팅
+    const { bigBlindSeat } = this.postBlinds(active);
 
     // 딜링 + 증강 훅 (on_shuffle / on_round_start)
     for (const p of active) {
@@ -224,11 +289,44 @@ export class PokerRoom extends Room<PokerState> {
       this.sendHole(p.sessionId);
     }
 
-    this.setPhase('betting');
-    const first = this.firstActor();
-    if (!first) return this.runoutAndShowdown(); // 전원 앤티 올인
-    st.activePlayerId = first.sessionId;
-    this.armTurnTimer();
+    this.setPhase('preflop');
+    // 프리플랍은 빅블라인드 다음(UTG)부터 시작 — 헤즈업이면 postBlinds가 딜러=SB로 배정해
+    // nextActorFromSeat(bigBlindSeat)이 자연히 딜러(SB) 자신을 돌려준다
+    const first = bigBlindSeat >= 0 ? this.nextActorFromSeat(bigBlindSeat) : this.firstActor();
+    if (!first) return this.runoutAndShowdown(); // 전원 올인
+    this.setTurn(first);
+  }
+
+  /**
+   * 스몰/빅 블라인드를 강제 베팅시킨다.
+   * 다인 테이블: 딜러 다음 좌석 = SB, 그다음 좌석 = BB.
+   * 헤즈업(활성 인원 2명) 표준 규칙: 딜러가 SB를 겸하고 프리플랍에 먼저 행동한다.
+   */
+  private postBlinds(active: PlayerState[]): { smallBlindSeat: number; bigBlindSeat: number } {
+    const st = this.state;
+    const dealer = active.find((p) => p.seatIndex === st.dealerSeat);
+
+    let sb: PlayerState | null;
+    let bb: PlayerState | null;
+    if (active.length === 2 && dealer) {
+      sb = dealer;
+      bb = this.nextActorFromSeat(dealer.seatIndex);
+    } else {
+      sb = this.nextActorFromSeat(st.dealerSeat);
+      bb = sb ? this.nextActorFromSeat(sb.seatIndex) : null;
+    }
+
+    if (sb) {
+      this.commit(sb, Math.min(st.smallBlind, sb.stack));
+      sb.lastAction = `스몰블라인드 ${sb.streetBet}`;
+    }
+    if (bb) {
+      this.commit(bb, Math.min(st.bigBlind, bb.stack));
+      bb.lastAction = `빅블라인드 ${bb.streetBet}`;
+    }
+    st.minRaise = st.bigBlind;
+
+    return { smallBlindSeat: sb ? sb.seatIndex : -1, bigBlindSeat: bb ? bb.seatIndex : -1 };
   }
 
   /** "로열의 예언" — 같은 무늬 브로드웨이 2장으로 홀카드 교체 (연출용 편향) */
@@ -261,22 +359,33 @@ export class PokerRoom extends Room<PokerState> {
   private handleAction(client: Client, message: ActionMessage) {
     const st = this.state;
     // 검증 1: phase와 차례
-    if (st.phase !== 'betting') return this.reject(client, '지금은 베팅 시간이 아닙니다');
+    if (!BETTING_PHASES.has(st.phase)) return this.reject(client, '지금은 베팅 시간이 아닙니다');
     if (client.sessionId !== st.activePlayerId) return this.reject(client, '당신의 차례가 아닙니다');
     const p = st.players.get(client.sessionId);
-    if (!p || p.folded || p.allIn) return;
+    if (!p || p.isFolded || p.allIn) return;
 
     const type = typeof message?.type === 'string' ? message.type : '';
+    const error = this.applyAction(p, type, message?.amount);
+    if (error) return this.reject(client, error);
+    this.resolveAfterAction();
+  }
+
+  /**
+   * 액션을 실제 상태에 반영한다. 사람(handleAction)과 봇(runBotAction) 공용 —
+   * 실패 시 에러 메시지를 반환하고(null이면 성공) 상태는 건드리지 않는다.
+   */
+  private applyAction(p: PlayerState, type: string, rawAmount?: unknown): string | null {
+    const st = this.state;
     const toCall = st.currentBet - p.streetBet;
 
     switch (type) {
       case 'fold':
-        p.folded = true;
+        p.isFolded = true;
         p.lastAction = '다이';
         break;
 
       case 'check':
-        if (toCall > 0) return this.reject(client, `체크 불가 — 콜 ${toCall} 필요`);
+        if (toCall > 0) return `체크 불가 — 콜 ${toCall} 필요`;
         p.lastAction = '체크';
         break;
 
@@ -293,39 +402,39 @@ export class PokerRoom extends Room<PokerState> {
 
       case 'raise': {
         // 검증 2: 클라이언트가 보낸 금액은 신뢰하지 않는다
-        const amount = Math.floor(Number(message?.amount));
-        if (!Number.isSafeInteger(amount) || amount <= 0)
-          return this.reject(client, '레이즈 금액이 올바르지 않습니다');
+        const amount = Math.floor(Number(rawAmount));
+        if (!Number.isSafeInteger(amount) || amount <= 0) return '레이즈 금액이 올바르지 않습니다';
         const pay = toCall + amount;
-        if (pay > p.stack) return this.reject(client, '스택이 부족합니다');
-        if (amount < st.minRaise && pay < p.stack)
-          return this.reject(client, `최소 레이즈는 ${st.minRaise}입니다`);
+        if (pay > p.stack) return '스택이 부족합니다';
+        if (amount < st.minRaise && pay < p.stack) return `최소 레이즈는 ${st.minRaise}입니다`;
         this.commit(p, pay);
         st.minRaise = amount;
         this.reopenAction(p);
+        this.raisesThisStreet += 1;
         p.lastAction = `레이즈 +${amount}`;
         break;
       }
 
       case 'allin': {
         const pay = p.stack;
-        if (pay <= 0) return;
+        if (pay <= 0) return '베팅할 칩이 없습니다';
         const raiseAmount = p.streetBet + pay - st.currentBet;
         this.commit(p, pay);
         if (raiseAmount > 0) {
           st.minRaise = Math.max(st.minRaise, raiseAmount);
           this.reopenAction(p);
+          this.raisesThisStreet += 1;
         }
         p.lastAction = '올인';
         break;
       }
 
       default:
-        return this.reject(client, '알 수 없는 액션입니다');
+        return '알 수 없는 액션입니다';
     }
 
     p.hasActed = true;
-    this.resolveAfterAction();
+    return null;
   }
 
   /** 칩을 스트리트 베팅에 반영 (currentBet/올인 처리 포함) */
@@ -347,7 +456,7 @@ export class PokerRoom extends Room<PokerState> {
   private resolveAfterAction() {
     this.clearTurnTimer();
     const st = this.state;
-    if (st.phase !== 'betting') return;
+    if (!BETTING_PHASES.has(st.phase)) return;
 
     const alive = this.actingPlayers();
     if (alive.length <= 1) return this.endByFold(alive[0]);
@@ -360,8 +469,7 @@ export class PokerRoom extends Room<PokerState> {
 
     const next = this.nextActor(st.activePlayerId);
     if (!next) return this.advanceStreet();
-    st.activePlayerId = next.sessionId;
-    this.armTurnTimer();
+    this.setTurn(next);
   }
 
   private advanceStreet() {
@@ -374,21 +482,22 @@ export class PokerRoom extends Room<PokerState> {
       p.lastAction = '';
     }
     st.currentBet = 0;
-    st.minRaise = ANTE;
-    st.activePlayerId = '';
+    st.minRaise = st.bigBlind;
+    this.raisesThisStreet = 0;
+    this.setActivePlayer(null);
 
     const alive = this.actingPlayers();
     const canAct = alive.filter((p) => !p.allIn);
-    if (st.street === 'river' || canAct.length <= 1) return this.runoutAndShowdown();
+    if (st.phase === 'river' || canAct.length <= 1) return this.runoutAndShowdown();
 
-    const dealCount = st.street === 'preflop' ? 3 : 1;
-    st.street = st.street === 'preflop' ? 'flop' : st.street === 'flop' ? 'turn' : 'river';
+    const dealCount = st.phase === 'preflop' ? 3 : 1;
+    this.setPhase(st.phase === 'preflop' ? 'flop' : st.phase === 'flop' ? 'turn' : 'river');
     this.dealBoard(dealCount);
 
+    // 포스트플랍은 딜러 다음의 첫 활성 좌석부터 (헤즈업이면 자연히 빅블라인드 쪽)
     const first = this.firstActor();
     if (!first) return this.runoutAndShowdown();
-    st.activePlayerId = first.sessionId;
-    this.armTurnTimer();
+    this.setTurn(first);
   }
 
   private dealBoard(n: number) {
@@ -409,7 +518,7 @@ export class PokerRoom extends Room<PokerState> {
   private showdown() {
     const st = this.state;
     this.setPhase('showdown');
-    st.activePlayerId = '';
+    this.setActivePlayer(null);
 
     const contenders = this.actingPlayers();
     const results: { p: PlayerState; hand: HandResult }[] = contenders.map((p) => ({
@@ -460,7 +569,7 @@ export class PokerRoom extends Room<PokerState> {
       })),
     });
 
-    this.setPhase('roundResult');
+    this.setPhase('round_end');
     this.clock.setTimeout(() => this.endRound(), RESULT_DELAY_MS);
   }
 
@@ -479,17 +588,16 @@ export class PokerRoom extends Room<PokerState> {
       });
     }
     st.pot = 0;
-    st.activePlayerId = '';
-    this.setPhase('roundResult');
+    this.setActivePlayer(null);
+    this.setPhase('round_end');
     this.clock.setTimeout(() => this.endRound(), RESULT_DELAY_MS);
   }
 
   private endRound() {
-    if (this.state.phase !== 'roundResult') return;
+    if (this.state.phase !== 'round_end') return;
     const solvent = this.seatOrder().filter((p) => p.connected && p.stack > 0);
     if (this.state.round >= MAX_ROUNDS || solvent.length < 2) return this.endGame('라운드 종료');
     this.state.round += 1;
-    this.dealerIndex += 1;
     this.beginRound();
   }
 
@@ -497,7 +605,7 @@ export class PokerRoom extends Room<PokerState> {
     this.clearTurnTimer();
     this.augmentTimer?.clear();
     this.setPhase('gameOver');
-    this.state.activePlayerId = '';
+    this.setActivePlayer(null);
     const standings = this.seatOrder()
       .map((p) => ({ sessionId: p.sessionId, name: p.name, stack: p.stack, connected: p.connected }))
       .sort((a, b) => b.stack - a.stack);
@@ -507,9 +615,9 @@ export class PokerRoom extends Room<PokerState> {
   // ─────────────────────────── 증강: 카드 재구성 ───────────────────────────
 
   private handleSwapCard(client: Client, message: { index?: unknown }) {
-    if (this.state.phase !== 'betting') return this.reject(client, '지금은 교체할 수 없습니다');
+    if (!BETTING_PHASES.has(this.state.phase)) return this.reject(client, '지금은 교체할 수 없습니다');
     const p = this.state.players.get(client.sessionId);
-    if (!p || p.folded) return;
+    if (!p || p.isFolded) return;
     // 검증: 증강 소유 + 핸드당 1회
     if (!findByEffect(this.ownedAugments(p), 'card_swap'))
       return this.reject(client, '카드 재구성 증강이 없습니다');
@@ -528,33 +636,69 @@ export class PokerRoom extends Room<PokerState> {
 
   // ─────────────────────────── 유틸 ───────────────────────────
 
+  /** 좌석 번호(0~3) 순으로 정렬된 플레이어 목록 */
   private seatOrder(): PlayerState[] {
-    return [...this.state.players.values()];
+    return [...this.state.players.values()].sort((a, b) => a.seatIndex - b.seatIndex);
+  }
+
+  /** 좌석 번호 → 플레이어 (빈 좌석은 undefined) */
+  private seatSlots(): (PlayerState | undefined)[] {
+    const slots: (PlayerState | undefined)[] = new Array(this.maxClients).fill(undefined);
+    for (const p of this.state.players.values()) slots[p.seatIndex] = p;
+    return slots;
   }
 
   /** 폴드하지 않고 연결된 플레이어 (올인 포함) */
   private actingPlayers(): PlayerState[] {
-    return this.seatOrder().filter((p) => !p.folded && p.connected);
+    return this.seatOrder().filter((p) => !p.isFolded && p.connected);
   }
 
-  /** 딜러 다음 순서부터 행동 가능한 첫 플레이어 */
-  private firstActor(): PlayerState | null {
-    const order = this.seatOrder();
-    for (let i = 0; i < order.length; i++) {
-      const p = order[(this.dealerIndex + 1 + i) % order.length];
-      if (!p.folded && p.connected && !p.allIn) return p;
+  /** 딜러 버튼을 다음 착석·플레이 가능(파산하지 않은) 플레이어 좌석으로 시계 방향 이동 */
+  private advanceDealer() {
+    const slots = this.seatSlots();
+    let seat = this.state.dealerSeat;
+    for (let i = 0; i < this.maxClients; i++) {
+      seat = (seat + 1 + this.maxClients) % this.maxClients;
+      const p = slots[seat];
+      if (p && p.connected && p.stack > 0) {
+        this.state.dealerSeat = seat;
+        return;
+      }
     }
-    return null;
+  }
+
+  /** 딜러 다음 좌석부터 시계 방향으로 행동 가능한 첫 플레이어 */
+  private firstActor(): PlayerState | null {
+    return this.nextActorFromSeat(this.state.dealerSeat);
   }
 
   private nextActor(fromSessionId: string): PlayerState | null {
-    const order = this.seatOrder();
-    const start = order.findIndex((p) => p.sessionId === fromSessionId);
-    for (let i = 1; i <= order.length; i++) {
-      const p = order[(start + i) % order.length];
-      if (!p.folded && p.connected && !p.allIn) return p;
+    const from = this.state.players.get(fromSessionId);
+    if (!from) return null;
+    return this.nextActorFromSeat(from.seatIndex);
+  }
+
+  /** 주어진 좌석 다음부터 시계 방향으로 행동 가능한(폴드하지 않고 연결됨, 올인 아님) 첫 플레이어 — 폴드한 플레이어는 자동 스킵 */
+  private nextActorFromSeat(seat: number): PlayerState | null {
+    const slots = this.seatSlots();
+    for (let i = 1; i <= this.maxClients; i++) {
+      const p = slots[(seat + i + this.maxClients) % this.maxClients];
+      if (p && !p.isFolded && p.connected && !p.allIn) return p;
     }
     return null;
+  }
+
+  /** activePlayerId와 currentTurnSeat을 함께 갱신 */
+  private setActivePlayer(p: PlayerState | null) {
+    this.state.activePlayerId = p ? p.sessionId : '';
+    this.state.currentTurnSeat = p ? p.seatIndex : -1;
+  }
+
+  /** 다음 차례를 지정 — 사람이면 제한시간 타이머, 봇이면 자동 행동을 예약 */
+  private setTurn(p: PlayerState) {
+    this.setActivePlayer(p);
+    if (p.isBot) this.scheduleBotAction(p);
+    else this.armTurnTimer();
   }
 
   private ownedAugments(p: PlayerState): Augment[] {
@@ -575,10 +719,10 @@ export class PokerRoom extends Room<PokerState> {
     const sessionId = this.state.activePlayerId;
     this.turnTimer = this.clock.setTimeout(() => {
       const p = this.state.players.get(sessionId);
-      if (!p || this.state.phase !== 'betting' || this.state.activePlayerId !== sessionId) return;
+      if (!p || !BETTING_PHASES.has(this.state.phase) || this.state.activePlayerId !== sessionId) return;
       const toCall = this.state.currentBet - p.streetBet;
       if (toCall > 0) {
-        p.folded = true;
+        p.isFolded = true;
         p.lastAction = '다이 (시간 초과)';
       } else {
         p.lastAction = '체크 (시간 초과)';
@@ -591,5 +735,52 @@ export class PokerRoom extends Room<PokerState> {
   private clearTurnTimer() {
     this.turnTimer?.clear();
     this.turnTimer = undefined;
+  }
+
+  // ─────────────────────────── 봇 자동 진행 ───────────────────────────
+
+  /** "생각하는 척" 딜레이 후 봇의 액션을 실행 예약 (turnTimer 슬롯을 재사용) */
+  private scheduleBotAction(bot: PlayerState) {
+    this.clearTurnTimer();
+    const sessionId = bot.sessionId;
+    const delay = BOT_ACT_DELAY_MIN_MS + Math.random() * (BOT_ACT_DELAY_MAX_MS - BOT_ACT_DELAY_MIN_MS);
+    this.turnTimer = this.clock.setTimeout(() => this.runBotAction(sessionId), delay);
+  }
+
+  /** botAI에 현재 판 상태를 넘겨 결정을 받고, 사람과 동일한 applyAction 경로로 반영 */
+  private async runBotAction(sessionId: string) {
+    const st = this.state;
+    if (!BETTING_PHASES.has(st.phase) || st.activePlayerId !== sessionId) return;
+    const bot = st.players.get(sessionId);
+    if (!bot || bot.isFolded || bot.allIn) return;
+
+    const toCall = st.currentBet - bot.streetBet;
+    const potSize = st.pot + this.seatOrder().reduce((sum, p) => sum + p.streetBet, 0);
+
+    let decision: BotDecision;
+    try {
+      decision = await decideBotAction({
+        holeCards: this.holes.get(sessionId) ?? [],
+        community: this.board,
+        street: st.phase as Street,
+        toCall,
+        potSize,
+        botStack: bot.stack,
+        raisesThisStreet: this.raisesThisStreet,
+        persona: this.botPersonas.get(sessionId) ?? 'cautious',
+      });
+    } catch (err) {
+      // 향후 Claude API 연동 시 호출 실패에 대비한 안전한 폴백
+      console.error('botAI 판단 실패, 안전한 기본 액션으로 대체:', err);
+      decision = { action: toCall > 0 ? 'fold' : 'check', reason: '판단 실패 — 안전하게 처리' };
+    }
+
+    // 판단을 기다리는 동안 차례/페이즈가 바뀌었을 수 있으므로 재검증
+    if (!BETTING_PHASES.has(st.phase) || st.activePlayerId !== sessionId) return;
+
+    let error = this.applyAction(bot, decision.action, decision.amount);
+    if (error) error = this.applyAction(bot, toCall > 0 ? 'fold' : 'check'); // 방어적 폴백
+    if (error) return;
+    this.resolveAfterAction();
   }
 }

@@ -28,10 +28,13 @@ export function toCardSchema(card: Card): CardSchema {
 export class PlayerState extends Schema {
   @type('string') sessionId = '';
   @type('string') name = '';
+  /** 좌석 번호 (0~3), 입장 시 빈 좌석 중 가장 낮은 번호로 배정 */
+  @type('uint8') seatIndex = 0;
+  @type('boolean') isBot = false;
   @type('int32') stack = 0;
   /** 이번 스트리트에 낸 칩 (스트리트 종료 시 pot으로 이동) */
   @type('int32') streetBet = 0;
-  @type('boolean') folded = false;
+  @type('boolean') isFolded = false;
   @type('boolean') allIn = false;
   @type('boolean') hasActed = false;
   @type('boolean') connected = true;
@@ -41,17 +44,32 @@ export class PlayerState extends Schema {
   @type('string') lastAction = '';
   /** 쇼다운 시에만 채워지는 공개 홀카드 */
   @type([CardSchema]) revealedHole = new ArraySchema<CardSchema>();
-  /** 보유 증강 id 목록 */
+  /** 보유 증강 id 목록 — 라운드가 지나도 비워지지 않고 누적된다 */
   @type(['string']) augmentIds = new ArraySchema<string>();
   /** 이번 라운드 증강 선택지 id (선택 완료 시 비움) */
   @type(['string']) augmentChoices = new ArraySchema<string>();
 }
 
-export type Phase = 'waiting' | 'augment' | 'betting' | 'showdown' | 'roundResult' | 'gameOver';
+/**
+ * 라운드 진행 순서:
+ *   waiting → augment_select → preflop → flop → turn → river → showdown → round_end
+ *   → (다음 라운드는 다시 augment_select로 순환)
+ * 베팅은 더 이상 하나의 'betting' phase가 아니라 preflop/flop/turn/river 각각이
+ * 곧 phase 값이다 — 별도 street 필드를 두지 않고 phase 자체가 스트리트를 표현한다.
+ */
+export type Phase =
+  | 'waiting'
+  | 'augment_select'
+  | 'preflop'
+  | 'flop'
+  | 'turn'
+  | 'river'
+  | 'showdown'
+  | 'round_end'
+  | 'gameOver';
 
 export class PokerState extends Schema {
   @type('string') phase: Phase = 'waiting';
-  @type('string') street = 'preflop';
   @type('uint8') round = 0;
   @type('uint8') maxRounds = 5;
   @type('int32') pot = 0;
@@ -59,8 +77,19 @@ export class PokerState extends Schema {
   @type('int32') currentBet = 0;
   /** 최소 레이즈 금액 */
   @type('int32') minRaise = 100;
+  /** 스몰 블라인드 금액 */
+  @type('int32') smallBlind = 50;
+  /** 빅 블라인드 금액 */
+  @type('int32') bigBlind = 100;
   /** 현재 행동할 플레이어 sessionId */
   @type('string') activePlayerId = '';
+  /** 방장 sessionId — "게임 시작" 버튼을 누를 수 있는 유일한 플레이어 */
+  @type('string') hostSessionId = '';
+  /** 딜러 버튼 좌석 (0~3, 미배정 시 -1) */
+  @type('int8') dealerSeat = -1;
+  /** 현재 턴 좌석 (0~3, activePlayerId와 동기, 없으면 -1) */
+  @type('int8') currentTurnSeat = -1;
+  /** 공개된 커뮤니티 카드 — 길이(community.length)가 곧 "공개된 카드 개수" */
   @type([CardSchema]) community = new ArraySchema<CardSchema>();
   @type({ map: PlayerState }) players = new MapSchema<PlayerState>();
 }
