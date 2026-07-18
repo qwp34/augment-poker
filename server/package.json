@@ -12,12 +12,15 @@
     "smoke": "tsx scripts/smoke.ts"
   },
   "dependencies": {
+    "@colyseus/monitor": "^0.16.7",
     "@colyseus/schema": "^3.0.76",
     "@colyseus/ws-transport": "^0.16.5",
     "colyseus": "^0.16.5",
+    "cors": "^2.8.6",
     "express": "^5.2.1"
   },
   "devDependencies": {
+    "@types/cors": "^2.8.19",
     "@types/express": "^5.0.6",
     "@types/node": "^26.1.1",
     "colyseus.js": "^0.16.22",
