@@ -40,5 +40,29 @@
     "trigger": "on_shuffle",
     "effect": { "type": "shuffle_bias", "value": 0.15 },
     "description": "셔플 시 낮은 확률로 운명이 개입한다... (연출용 — 브로드웨이 카드가 손에 들어올 확률 소폭 상승)"
+  },
+  {
+    "id": "aug_sinister_eye",
+    "name": "음침한 눈",
+    "rarity": "gold",
+    "trigger": "on_pick",
+    "effect": { "type": "reveal_opponent_card", "value": 1 },
+    "description": "선택 즉시 — 상대 1명을 지목해 그의 홀카드 1장을 나에게만 공개한다 (1회성)"
+  },
+  {
+    "id": "aug_chameleon",
+    "name": "카멜레온",
+    "rarity": "prismatic",
+    "trigger": "on_pick",
+    "effect": { "type": "edit_own_card", "value": 1 },
+    "description": "선택 즉시 — 내 홀카드 1장을 원하는 숫자/무늬로 자유롭게 바꾼다 (1회성)"
+  },
+  {
+    "id": "aug_carrot",
+    "name": "당근이세요?",
+    "rarity": "gold",
+    "trigger": "on_pick",
+    "effect": { "type": "swap_with_opponent", "value": 1 },
+    "description": "선택 즉시 — 상대 1명을 지목해 내 홀카드 1장과 상대 홀카드 1장을 맞바꾼다 (1회성)"
   }
 ]

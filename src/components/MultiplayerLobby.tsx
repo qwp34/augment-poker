@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
 import { useMultiplayerRoom } from '../net/useMultiplayerRoom';
 import { AugmentSelectScreen } from './AugmentSelectScreen';
+import { AugmentTargetScreen } from './AugmentTargetScreen';
 import { PokerTable } from './PokerTable';
 
 export function MultiplayerLobby({ onClose }: { onClose: () => void }) {
@@ -15,6 +16,7 @@ export function MultiplayerLobby({ onClose }: { onClose: () => void }) {
     room,
     shareUrl,
     create,
+    joinById,
     gameState,
     myHole,
     myAugmentChoices,
@@ -22,6 +24,8 @@ export function MultiplayerLobby({ onClose }: { onClose: () => void }) {
     sendAction,
     lastResult,
     gameOver,
+    pendingAugmentTarget,
+    chooseAugmentTarget,
   } = useMultiplayerRoom(name);
 
   // 서버 거부 메시지(방장 아님, 잘못된 레이즈 금액 등)는 화면에 상관없이 토스트로 띄운다
@@ -128,18 +132,25 @@ export function MultiplayerLobby({ onClose }: { onClose: () => void }) {
             🌐 친구와 함께 플레이
           </motion.h1>
 
-          {status === 'idle' && !roomId && (
+          {status === 'idle' && (
             <div className="mp-form">
+              {roomId && <p className="mp-hint">닉네임을 정하고 이 방에 입장하세요.</p>}
               <input
                 className="mp-input"
-                placeholder="닉네임 (선택)"
-                maxLength={12}
+                placeholder="닉네임 (미입력 시 자동 배정, 최대 8자)"
+                maxLength={8}
                 value={name}
                 onChange={(e) => setName(e.target.value)}
               />
-              <button className="gold-btn gold-btn-large" onClick={() => create()}>
-                새 방 만들기
-              </button>
+              {roomId ? (
+                <button className="gold-btn gold-btn-large" onClick={() => joinById(roomId)}>
+                  입장하기
+                </button>
+              ) : (
+                <button className="gold-btn gold-btn-large" onClick={() => create()}>
+                  새 방 만들기
+                </button>
+              )}
             </div>
           )}
 
@@ -183,6 +194,12 @@ export function MultiplayerLobby({ onClose }: { onClose: () => void }) {
             </div>
           )}
         </div>
+      )}
+
+      {/* 즉시형 증강(음침한 눈/카멜레온/당근이세요?) 대상 지정 — 없으면 15초 자동 타임아웃까지
+          화면이 멈춘 것처럼 보인다. 어느 화면 위에 있든 최상단 모달로 띄운다. */}
+      {pendingAugmentTarget && (
+        <AugmentTargetScreen request={pendingAugmentTarget} myHole={myHole} onSubmit={chooseAugmentTarget} />
       )}
 
       {actionError && <div className="mp-toast-error">{actionError}</div>}

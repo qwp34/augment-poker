@@ -16,7 +16,10 @@ import {
 import { decideBotAction, type BotPersona } from '../engine/botAI';
 import augmentsData from '../data/augments.json';
 
-const AUGMENT_POOL = augmentsData as Augment[];
+// 'on_pick' 증강(음침한 눈/카멜레온/당근이세요?)은 대상 지정이 필요한 멀티플레이 전용
+// 흐름으로만 구현돼 있다 — 로컬 싱글플레이는 아직 그 효과를 실행할 수 없으므로
+// 애초에 제시하지 않는다(고르고도 아무 일도 안 일어나는 "먹통 픽"을 막기 위함).
+const AUGMENT_POOL = (augmentsData as Augment[]).filter((a) => a.trigger !== 'on_pick');
 
 const START_STACK = 5000;
 const ANTE = 100;

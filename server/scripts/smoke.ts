@@ -19,6 +19,7 @@ let holeCount = 0;
 let resultReceived = false;
 let rejectionReceived = false;
 let invalidRaiseSent = false;
+let instantAugmentFlowSeen = false;
 
 function autoPlay(room: Room, label: string) {
   const done = new Set<string>();
@@ -36,6 +37,25 @@ function autoPlay(room: Room, label: string) {
     rejectionReceived = true;
     log(`[${label}] 서버 거부: "${e.message}"`);
   });
+
+  // 즉시형 증강(음침한 눈/카멜레온/당근이세요?)을 뽑았다면 augment_target 단계에서
+  // 대상 지정 요청이 온다 — 즉시 유효한 값으로 응답해 흐름이 막히지 않게 한다.
+  room.onMessage(
+    'augmentTargetRequest',
+    (req: { augmentId: string; effectType: string; opponents: { sessionId: string; name: string }[] }) => {
+      instantAugmentFlowSeen = true;
+      log(`[${label}] 즉시형 증강 대상 지정 요청: ${req.augmentId} (${req.effectType})`);
+      const opponent = req.opponents[0];
+      if (req.effectType === 'reveal_opponent_card' && opponent) {
+        room.send('chooseAugmentTarget', { targetSessionId: opponent.sessionId, targetCardIndex: 0 });
+      } else if (req.effectType === 'edit_own_card') {
+        room.send('chooseAugmentTarget', { cardIndex: 0, rank: 14, suit: 'spades' });
+      } else if (req.effectType === 'swap_with_opponent' && opponent) {
+        room.send('chooseAugmentTarget', { targetSessionId: opponent.sessionId, targetCardIndex: 0, ownCardIndex: 0 });
+      }
+    },
+  );
+  room.onMessage('augmentReveal', (r: unknown) => log(`[${label}] 카드 공개 수신:`, JSON.stringify(r)));
 
   room.onStateChange(() => {
     const st = room.state.toJSON() as any;
@@ -124,6 +144,8 @@ async function main() {
     log(`${ok ? '✅' : '❌'} ${name}`);
     if (!ok) allOk = false;
   }
+  // 즉시형 증강은 8개 중 무작위 3개 제시라 매 실행마다 뽑힌다는 보장이 없다 — 참고용 로그만 남긴다
+  log(`${instantAugmentFlowSeen ? 'ℹ️' : '·'} 즉시형 증강(음침한 눈/카멜레온/당근이세요?) 대상 지정 흐름 ${instantAugmentFlowSeen ? '실제로 검증됨' : '이번 실행에선 미등장'}`);
 
   roomA.leave();
   roomB.leave();

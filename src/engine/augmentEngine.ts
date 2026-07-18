@@ -7,13 +7,21 @@ import type { HandCategory } from './handEvaluator';
 
 export type AugmentRarity = 'silver' | 'gold' | 'prismatic';
 
-export type AugmentTrigger = 'on_showdown' | 'on_hand_start' | 'on_round_start' | 'on_shuffle';
+/**
+ * on_pick: 선택되는 즉시 1회성으로 해소되는 증강(음침한 눈/카멜레온/당근이세요?).
+ * 멀티플레이 서버(PokerRoom)에서만 대상 지정 흐름과 함께 처리되며, 로컬 싱글플레이
+ * 엔진(gameStore)은 아직 이 트리거를 실행할 수 없으므로 증강 풀에서 제외한다.
+ */
+export type AugmentTrigger = 'on_showdown' | 'on_hand_start' | 'on_round_start' | 'on_shuffle' | 'on_pick';
 
 export type AugmentEffectType =
   | 'payout_multiplier'
   | 'card_swap'
   | 'jokerize_random'
-  | 'shuffle_bias';
+  | 'shuffle_bias'
+  | 'reveal_opponent_card'
+  | 'edit_own_card'
+  | 'swap_with_opponent';
 
 export interface AugmentCondition {
   handType?: HandCategory;

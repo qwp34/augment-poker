@@ -1,5 +1,12 @@
-import type { Augment } from '../engine/augmentEngine';
+import type { Augment, AugmentRarity } from '../engine/augmentEngine';
 import { RARITY_NAMES_KO } from '../engine/augmentEngine';
+
+/** 등급별 아이콘 — 이미지 에셋 없이 희귀도를 한눈에 구분하기 위한 기호 */
+const RARITY_ICON: Record<AugmentRarity, string> = {
+  silver: '◆',
+  gold: '★',
+  prismatic: '✦',
+};
 
 interface AugmentCardProps {
   augment: Augment;
@@ -12,7 +19,7 @@ export function AugmentCard({ augment, onSelect, compact }: AugmentCardProps) {
   if (compact) {
     return (
       <div className={`augment-chip rarity-${augment.rarity}`} title={augment.description}>
-        {augment.name}
+        <span className="augment-chip-icon">{RARITY_ICON[augment.rarity]}</span> {augment.name}
       </div>
     );
   }

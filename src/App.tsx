@@ -8,6 +8,7 @@ import { WinBanner } from './components/WinBanner';
 import { TopBar } from './components/TopBar';
 import { LogPanel } from './components/LogPanel';
 import { MultiplayerLobby } from './components/MultiplayerLobby';
+import { TitleSparkles } from './components/TitleSparkles';
 import { findByEffect } from './engine/augmentEngine';
 import { evaluateBest } from './engine/handEvaluator';
 import { handLabel } from './ui/format';
@@ -77,46 +78,51 @@ export default function App() {
   // ── 타이틀 화면 ──
   if (!started) {
     return (
-      <div className="screen title-screen">
+      <div className="screen title-screen title-screen-neon">
         <div className="scanlines" />
-        <motion.h1
-          className="game-title"
-          initial={{ y: -40, opacity: 0 }}
-          animate={{ y: 0, opacity: 1 }}
-          transition={{ type: 'spring', stiffness: 200, damping: 18 }}
-        >
-          ♠ 증강 포커 ♠
-        </motion.h1>
-        <motion.p
-          className="game-subtitle"
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          transition={{ delay: 0.3 }}
-        >
-          매 라운드 증강을 쌓아 봇을 무너뜨려라
-        </motion.p>
-        <motion.button
-          className="gold-btn gold-btn-large"
-          initial={{ scale: 0.8, opacity: 0 }}
-          animate={{ scale: 1, opacity: 1 }}
-          transition={{ delay: 0.5, type: 'spring', stiffness: 260 }}
-          onClick={() => {
-            sfx.click();
-            startGame();
-            setStarted(true);
-          }}
-        >
-          게임 시작
-        </motion.button>
-        <motion.button
-          className="mp-multiplayer-btn"
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          transition={{ delay: 0.7 }}
-          onClick={() => setMultiplayerOpen(true)}
-        >
-          🌐 친구와 함께 플레이
-        </motion.button>
+        <div className="title-sparkle-wrap">
+          <TitleSparkles />
+          <motion.h1
+            className="game-title neon-title"
+            initial={{ y: -40, opacity: 0 }}
+            animate={{ y: 0, opacity: 1 }}
+            transition={{ type: 'spring', stiffness: 200, damping: 18 }}
+          >
+            증강포커
+          </motion.h1>
+        </div>
+        <div className="chip-btn-row">
+          <motion.button
+            className="chip-btn chip-btn-gold"
+            initial={{ scale: 0.8, opacity: 0 }}
+            animate={{ scale: 1, opacity: 1 }}
+            transition={{ delay: 0.5, type: 'spring', stiffness: 260 }}
+            onClick={() => {
+              sfx.click();
+              startGame();
+              setStarted(true);
+            }}
+          >
+            <span className="chip-btn-side" aria-hidden="true" />
+            <span className="chip-btn-face">
+              <span className="chip-btn-title">게임 시작</span>
+              <span className="chip-btn-subtitle">혼자서 플레이</span>
+            </span>
+          </motion.button>
+          <motion.button
+            className="chip-btn chip-btn-teal"
+            initial={{ scale: 0.8, opacity: 0 }}
+            animate={{ scale: 1, opacity: 1 }}
+            transition={{ delay: 0.65, type: 'spring', stiffness: 260 }}
+            onClick={() => setMultiplayerOpen(true)}
+          >
+            <span className="chip-btn-side" aria-hidden="true" />
+            <span className="chip-btn-face">
+              <span className="chip-btn-title">멀티플레이</span>
+              <span className="chip-btn-subtitle">친구와 함께</span>
+            </span>
+          </motion.button>
+        </div>
       </div>
     );
   }

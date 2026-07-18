@@ -10,15 +10,20 @@
 
 import { Room, type Client, type Delayed } from 'colyseus';
 import { PokerState, PlayerState, toCardSchema, type Phase } from '../schema/PokerState';
-import type { Card, Street, Suit } from '../engine/types';
-import { SUITS } from '../engine/types';
+import type { Card, Rank, Street, Suit } from '../engine/types';
+import { RANKS, SUITS } from '../engine/types';
 import { createDeck, shuffle } from '../engine/deck';
 import { evaluateBest, compareHands, type HandResult } from '../engine/handEvaluator';
 import {
   applyPayoutAugments,
   rollAugmentChoices,
   findByEffect,
+  isInstantAugment,
+  applyEditCard,
+  swapCards,
+  revealCard,
   type Augment,
+  type HoleIndex,
 } from '../engine/augmentEngine';
 import { decideBotAction, type BotDecision, type BotPersona } from '../engine/botAI';
 import augmentsData from '../data/augments.json';
@@ -28,9 +33,12 @@ const AUGMENT_POOL = augmentsData as Augment[];
 const START_STACK = 5000;
 const SMALL_BLIND = 50;
 const BIG_BLIND = 100;
+const MAX_NAME_LENGTH = 8;
 const MAX_ROUNDS = 5;
 const TURN_TIMEOUT_MS = 30_000;
 const AUGMENT_TIMEOUT_MS = 20_000;
+/** 즉시형 증강(음침한 눈/카멜레온/당근이세요?) 대상 지정 제한시간 */
+const AUGMENT_TARGET_TIMEOUT_MS = 15_000;
 const RESULT_DELAY_MS = 5_000;
 const BOT_ACT_DELAY_MIN_MS = 600;
 const BOT_ACT_DELAY_MAX_MS = 1_400;
@@ -39,6 +47,20 @@ const BOT_ACT_DELAY_MAX_MS = 1_400;
 const BETTING_PHASES = new Set<Phase>(['preflop', 'flop', 'turn', 'river']);
 
 type ActionMessage = { type?: unknown; amount?: unknown };
+
+/** 즉시형 증강 대상 지정 메시지 — 효과 종류에 따라 필요한 필드만 채워 보낸다 */
+type AugmentTargetMessage = {
+  targetSessionId?: unknown;
+  targetCardIndex?: unknown;
+  ownCardIndex?: unknown;
+  cardIndex?: unknown;
+  rank?: unknown;
+  suit?: unknown;
+};
+
+function toHoleIndex(value: unknown): HoleIndex | null {
+  return value === 0 || value === 1 ? value : null;
+}
 
 export class PokerRoom extends Room<PokerState> {
   maxClients = 4;
@@ -55,6 +77,10 @@ export class PokerRoom extends Room<PokerState> {
   private botPersonas = new Map<string, BotPersona>();
   /** 이번 스트리트에 발생한 레이즈 횟수 (봇의 재레이즈 억제용) */
   private raisesThisStreet = 0;
+  /** augment_target phase에서 아직 대상 지정을 안 한 플레이어 sessionId 집합 */
+  private augmentTargetPendingIds = new Set<string>();
+  /** startHand()에서 계산한 이번 핸드의 프리플랍 첫 액션 좌석 — augment_target을 거친 뒤에도 써야 해서 보관 */
+  private handFirstActorSeat = -1;
 
   private turnTimer?: Delayed;
   private augmentTimer?: Delayed;
@@ -70,6 +96,9 @@ export class PokerRoom extends Room<PokerState> {
     this.onMessage('chooseAugment', (client, message: { id?: unknown }) =>
       this.handleChooseAugment(client, message),
     );
+    this.onMessage('chooseAugmentTarget', (client, message: AugmentTargetMessage) =>
+      this.handleAugmentTarget(client, message),
+    );
     this.onMessage('swapCard', (client, message: { index?: unknown }) =>
       this.handleSwapCard(client, message),
     );
@@ -81,8 +110,7 @@ export class PokerRoom extends Room<PokerState> {
     p.sessionId = client.sessionId;
     p.seatIndex = this.assignSeat();
     p.isBot = options?.isBot === true;
-    const rawName = typeof options?.name === 'string' ? options.name.trim() : '';
-    p.name = rawName.slice(0, 12) || `플레이어${p.seatIndex + 1}`;
+    p.name = this.resolvePlayerName(options?.name);
     p.stack = START_STACK;
     // 게임이 이미 진행 중이면 이번 핸드는 관전, 다음 라운드부터 합류
     if (this.state.phase !== 'waiting') p.isFolded = true;
@@ -102,6 +130,24 @@ export class PokerRoom extends Room<PokerState> {
       if (!used.has(seat)) return seat;
     }
     throw new Error('빈 좌석이 없습니다');
+  }
+
+  /**
+   * 입력 닉네임을 검증한다 — 앞뒤 공백 제거 후 최대 길이로 자르고,
+   * 문자/숫자가 하나도 남지 않으면(빈 값·공백만·특수문자만) 중복 없는 기본 이름으로 대체한다.
+   */
+  private resolvePlayerName(rawInput: unknown): string {
+    const trimmed = (typeof rawInput === 'string' ? rawInput : '').trim().slice(0, MAX_NAME_LENGTH);
+    const hasRealContent = /[\p{L}\p{N}]/u.test(trimmed);
+    return hasRealContent ? trimmed : this.uniqueDefaultName();
+  }
+
+  /** 현재 아무도 쓰지 않는 "플레이어N" 중 가장 낮은 번호 — 커스텀 닉네임과의 충돌도 피한다 */
+  private uniqueDefaultName(): string {
+    const existing = new Set([...this.state.players.values()].map((p) => p.name));
+    let n = 1;
+    while (existing.has(`플레이어${n}`)) n++;
+    return `플레이어${n}`;
   }
 
   /** 방장이 "게임 시작"을 누르면: 빈 좌석을 봇으로 채우고 방을 잠근 뒤 라운드 진행 */
@@ -163,6 +209,10 @@ export class PokerRoom extends Room<PokerState> {
       return this.endGame('상대 퇴장');
     }
     if (this.state.phase === 'augment_select') return this.checkAllChosen();
+    if (this.state.phase === 'augment_target') {
+      if (p.pendingInstantAugment) this.autoApplyInstantAugment(p);
+      return this.resolveInstantAugmentFor(p);
+    }
     if (BETTING_PHASES.has(this.state.phase)) this.resolveAfterAction();
   }
 
@@ -199,6 +249,7 @@ export class PokerRoom extends Room<PokerState> {
     p.augmentIds.push(chosen.id);
     p.augmentChoices.clear();
     this.pendingChoices.delete(p.sessionId);
+    if (isInstantAugment(chosen)) p.pendingInstantAugment = chosen.id;
   }
 
   private handleChooseAugment(client: Client, message: { id?: unknown }) {
@@ -215,6 +266,7 @@ export class PokerRoom extends Room<PokerState> {
     p.augmentIds.push(chosen.id);
     p.augmentChoices.clear();
     this.pendingChoices.delete(client.sessionId);
+    if (isInstantAugment(chosen)) p.pendingInstantAugment = chosen.id;
     this.checkAllChosen();
   }
 
@@ -234,8 +286,10 @@ export class PokerRoom extends Room<PokerState> {
     for (const [sessionId, choices] of this.pendingChoices) {
       const p = this.state.players.get(sessionId);
       if (p && choices.length > 0) {
-        p.augmentIds.push(choices[0].id);
+        const chosen = choices[0];
+        p.augmentIds.push(chosen.id);
         p.augmentChoices.clear();
+        if (isInstantAugment(chosen)) p.pendingInstantAugment = chosen.id;
       }
     }
     this.pendingChoices.clear();
@@ -289,10 +343,203 @@ export class PokerRoom extends Room<PokerState> {
       this.sendHole(p.sessionId);
     }
 
-    this.setPhase('preflop');
     // 프리플랍은 빅블라인드 다음(UTG)부터 시작 — 헤즈업이면 postBlinds가 딜러=SB로 배정해
-    // nextActorFromSeat(bigBlindSeat)이 자연히 딜러(SB) 자신을 돌려준다
-    const first = bigBlindSeat >= 0 ? this.nextActorFromSeat(bigBlindSeat) : this.firstActor();
+    // nextActorFromSeat(bigBlindSeat)이 자연히 딜러(SB) 자신을 돌려준다. augment_target을
+    // 거칠 수도 있으므로 좌석만 기억해두고 실제 진입은 enterPreflop()에서 한다.
+    this.handFirstActorSeat = bigBlindSeat;
+    this.beginAugmentTargetPhase(active);
+  }
+
+  // ─────────────────────────── 증강: 즉시형(음침한 눈 / 카멜레온 / 당근이세요?) ───────────────────────────
+
+  /**
+   * 홀카드가 갓 딜링된 직후 호출된다. 이번 라운드에 즉시형 증강을 고른 플레이어가
+   * 있으면 augment_target phase로 진입해 대상 지정을 기다리고, 없으면 곧바로
+   * preflop으로 넘어간다. 봇은 기다리지 않고 즉시 무작위로 자동 처리한다.
+   */
+  private beginAugmentTargetPhase(active: PlayerState[]) {
+    const pending = active.filter((p) => p.pendingInstantAugment);
+    for (const p of pending) {
+      if (p.isBot) this.autoApplyInstantAugment(p);
+    }
+
+    const waiting = pending.filter((p) => p.pendingInstantAugment);
+    if (waiting.length === 0) return this.enterPreflop();
+
+    this.setPhase('augment_target');
+    this.augmentTargetPendingIds = new Set(waiting.map((p) => p.sessionId));
+    for (const p of waiting) this.sendAugmentTargetPrompt(p);
+    this.augmentTimer = this.clock.setTimeout(() => this.autoResolveAugmentTargets(), AUGMENT_TARGET_TIMEOUT_MS);
+  }
+
+  /** 대상 지정이 필요한 플레이어에게만 개별 전송 — 카드 값은 아직 안 알려준다(선택 UI는 이름/인덱스만 필요) */
+  private sendAugmentTargetPrompt(p: PlayerState) {
+    const client = this.clients.find((c) => c.sessionId === p.sessionId);
+    if (!client) return;
+    const augment = this.ownedAugments(p).find((a) => a.id === p.pendingInstantAugment);
+    if (!augment) {
+      p.pendingInstantAugment = '';
+      return;
+    }
+    const opponents = this.actingPlayers()
+      .filter((o) => o.sessionId !== p.sessionId)
+      .map((o) => ({ sessionId: o.sessionId, name: o.name }));
+    client.send('augmentTargetRequest', {
+      augmentId: augment.id,
+      effectType: augment.effect.type,
+      opponents,
+    });
+  }
+
+  private handleAugmentTarget(client: Client, message: AugmentTargetMessage) {
+    if (this.state.phase !== 'augment_target') return;
+    const p = this.state.players.get(client.sessionId);
+    if (!p || !p.pendingInstantAugment) return;
+    const augment = this.ownedAugments(p).find((a) => a.id === p.pendingInstantAugment);
+    if (!augment) return this.resolveInstantAugmentFor(p);
+
+    const ok = this.applyInstantAugmentEffect(p, augment, message);
+    if (!ok) return this.reject(client, '증강 대상 지정이 올바르지 않습니다');
+    this.resolveInstantAugmentFor(p);
+  }
+
+  /** 대상 지정이 끝난 플레이어를 대기 목록에서 제거 — 전원 끝나면 preflop으로 진행 */
+  private resolveInstantAugmentFor(p: PlayerState) {
+    p.pendingInstantAugment = '';
+    this.augmentTargetPendingIds.delete(p.sessionId);
+    if (this.state.phase === 'augment_target' && this.augmentTargetPendingIds.size === 0) {
+      this.augmentTimer?.clear();
+      this.enterPreflop();
+    }
+  }
+
+  /** 제한시간 초과 시 아직 대상을 안 정한 플레이어 전원을 무작위로 자동 처리 */
+  private autoResolveAugmentTargets() {
+    if (this.state.phase !== 'augment_target') return;
+    for (const sessionId of [...this.augmentTargetPendingIds]) {
+      const p = this.state.players.get(sessionId);
+      if (p) this.autoApplyInstantAugment(p);
+    }
+    this.augmentTargetPendingIds.clear();
+    this.enterPreflop();
+  }
+
+  /** 무작위로 유효한 대상을 골라 즉시 해소 — 봇 처리 및 타임아웃/퇴장 폴백 공용 */
+  private autoApplyInstantAugment(p: PlayerState) {
+    const augment = this.ownedAugments(p).find((a) => a.id === p.pendingInstantAugment);
+    p.pendingInstantAugment = '';
+    if (!augment) return;
+
+    const opponents = this.actingPlayers().filter((o) => o.sessionId !== p.sessionId);
+    const randomIndex = (): HoleIndex => (Math.random() < 0.5 ? 0 : 1);
+
+    switch (augment.effect.type) {
+      case 'reveal_opponent_card': {
+        const target = opponents[Math.floor(Math.random() * opponents.length)];
+        if (target) {
+          this.applyRevealCardEffect(p, { targetSessionId: target.sessionId, targetCardIndex: randomIndex() });
+        }
+        break;
+      }
+      case 'edit_own_card': {
+        const rank = RANKS[Math.floor(Math.random() * RANKS.length)];
+        const suit = SUITS[Math.floor(Math.random() * SUITS.length)];
+        this.applyEditCardEffect(p, { cardIndex: randomIndex(), rank, suit });
+        break;
+      }
+      case 'swap_with_opponent': {
+        const target = opponents[Math.floor(Math.random() * opponents.length)];
+        if (target) {
+          this.applySwapCardEffect(p, {
+            targetSessionId: target.sessionId,
+            targetCardIndex: randomIndex(),
+            ownCardIndex: randomIndex(),
+          });
+        }
+        break;
+      }
+    }
+  }
+
+  private applyInstantAugmentEffect(p: PlayerState, augment: Augment, message: AugmentTargetMessage): boolean {
+    switch (augment.effect.type) {
+      case 'reveal_opponent_card':
+        return this.applyRevealCardEffect(p, message);
+      case 'edit_own_card':
+        return this.applyEditCardEffect(p, message);
+      case 'swap_with_opponent':
+        return this.applySwapCardEffect(p, message);
+      default:
+        return false;
+    }
+  }
+
+  /** 음침한 눈 — 지정한 상대 홀카드 1장을 나에게만 전송한다. 게임 상태(this.holes)는 건드리지 않는 순수 조회 */
+  private applyRevealCardEffect(p: PlayerState, message: AugmentTargetMessage): boolean {
+    const targetId = typeof message.targetSessionId === 'string' ? message.targetSessionId : '';
+    const idx = toHoleIndex(message.targetCardIndex);
+    if (idx === null || !targetId || targetId === p.sessionId) return false;
+    const target = this.state.players.get(targetId);
+    if (!target || !this.actingPlayers().includes(target)) return false;
+
+    const hole = this.holes.get(targetId);
+    if (!hole) return false;
+    const card = revealCard(hole, idx);
+
+    const client = this.clients.find((c) => c.sessionId === p.sessionId);
+    client?.send('augmentReveal', {
+      targetSessionId: targetId,
+      targetName: target.name,
+      cardIndex: idx,
+      card,
+    });
+    return true;
+  }
+
+  /** 카멜레온 — 내 홀카드 1장을 원하는 숫자/무늬로 교체하고, 갱신된 홀카드를 나에게만 다시 전송 */
+  private applyEditCardEffect(p: PlayerState, message: AugmentTargetMessage): boolean {
+    const idx = toHoleIndex(message.cardIndex);
+    if (idx === null) return false;
+    const rank = Math.floor(Number(message.rank));
+    if (!RANKS.includes(rank as Rank)) return false;
+    const suit = message.suit;
+    if (typeof suit !== 'string' || !SUITS.includes(suit as Suit)) return false;
+
+    const hole = this.holes.get(p.sessionId);
+    if (!hole) return false;
+    this.holes.set(p.sessionId, applyEditCard(hole, idx, rank as Rank, suit as Suit));
+    this.sendHole(p.sessionId);
+    return true;
+  }
+
+  /** 당근이세요? — 지정한 상대와 홀카드 1장씩 교환. 상대에게는 평범한 hole 메시지만 가서 교체 사실/출처를 알 수 없다 */
+  private applySwapCardEffect(p: PlayerState, message: AugmentTargetMessage): boolean {
+    const targetId = typeof message.targetSessionId === 'string' ? message.targetSessionId : '';
+    if (!targetId || targetId === p.sessionId) return false;
+    const target = this.state.players.get(targetId);
+    if (!target || !this.actingPlayers().includes(target)) return false;
+
+    const tIdx = toHoleIndex(message.targetCardIndex);
+    const oIdx = toHoleIndex(message.ownCardIndex);
+    if (tIdx === null || oIdx === null) return false;
+
+    const myHole = this.holes.get(p.sessionId);
+    const theirHole = this.holes.get(targetId);
+    if (!myHole || !theirHole) return false;
+
+    const { mine, theirs } = swapCards(myHole, theirHole, oIdx, tIdx);
+    this.holes.set(p.sessionId, mine);
+    this.holes.set(targetId, theirs);
+    this.sendHole(p.sessionId);
+    this.sendHole(targetId);
+    return true;
+  }
+
+  /** augment_target을 무사히 통과한(또는 처음부터 필요 없던) 핸드를 실제로 시작한다 */
+  private enterPreflop() {
+    this.setPhase('preflop');
+    const first = this.handFirstActorSeat >= 0 ? this.nextActorFromSeat(this.handFirstActorSeat) : this.firstActor();
+    this.handFirstActorSeat = -1;
     if (!first) return this.runoutAndShowdown(); // 전원 올인
     this.setTurn(first);
   }

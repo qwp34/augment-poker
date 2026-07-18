@@ -13,6 +13,12 @@
   --silver: #b8c4cc;
   --prismatic: #b06ef5;
   --teal: #4ad9c0;
+  /* 메인 타이틀·메인 메뉴 버튼(게임 시작/멀티플레이) 정도의 임팩트 텍스트만 디스플레이 폰트를 쓰고,
+     그 외 모든 UI 텍스트(베팅 버튼, 금액, 증강 설명, 로그 등)는 기본적으로 가독성 좋은 폰트를 쓴다.
+     웹폰트가 아직 로딩되지 않은 순간에도 한글이 네모(tofu)로 깨지지 않도록 시스템 한글 폰트를
+     폴백 체인에 명시한다 — Google Fonts CSS는 두 폰트 모두 font-display: swap이 이미 적용되어 있다. */
+  --font-display: 'Black Han Sans', 'Malgun Gothic', 'Apple SD Gothic Neo', sans-serif;
+  --font-body: 'Noto Sans KR', 'Malgun Gothic', 'Apple SD Gothic Neo', system-ui, sans-serif;
 }
 
 html,
@@ -24,7 +30,8 @@ body,
 body {
   background: var(--bg);
   color: var(--text);
-  font-family: 'Segoe UI', 'Malgun Gothic', system-ui, sans-serif;
+  /* 기본값은 가독성 폰트 — 타이틀/메인 버튼 등 소수의 예외만 var(--font-display)를 개별 지정한다 */
+  font-family: var(--font-body);
   overflow-x: hidden;
 }
 

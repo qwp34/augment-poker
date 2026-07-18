@@ -48,18 +48,28 @@ export class PlayerState extends Schema {
   @type(['string']) augmentIds = new ArraySchema<string>();
   /** 이번 라운드 증강 선택지 id (선택 완료 시 비움) */
   @type(['string']) augmentChoices = new ArraySchema<string>();
+  /**
+   * 방금 고른 증강이 'on_pick'(즉시 1회성 — 음침한 눈/카멜레온/당근이세요?)인데
+   * 아직 대상 지정이 끝나지 않았으면 그 증강 id. 해소되면 빈 문자열로 돌아간다.
+   * 클라이언트는 이 값이 자기 자신의 sessionId에 채워지면 대상 지정 UI를 띄우면 된다.
+   */
+  @type('string') pendingInstantAugment = '';
 }
 
 /**
  * 라운드 진행 순서:
- *   waiting → augment_select → preflop → flop → turn → river → showdown → round_end
- *   → (다음 라운드는 다시 augment_select로 순환)
+ *   waiting → augment_select → augment_target → preflop → flop → turn → river
+ *   → showdown → round_end → (다음 라운드는 다시 augment_select로 순환)
  * 베팅은 더 이상 하나의 'betting' phase가 아니라 preflop/flop/turn/river 각각이
  * 곧 phase 값이다 — 별도 street 필드를 두지 않고 phase 자체가 스트리트를 표현한다.
+ * augment_target: 이번 라운드에 'on_pick' 증강을 고른 플레이어가 있을 때만 거치는
+ * 단계 — 홀카드가 갓 딜링된 직후, 베팅 시작 전에 대상(플레이어/카드)을 지정해
+ * 효과(카드 확인/변경/교환)를 해소한다. 아무도 즉시형 증강을 고르지 않았으면 건너뛴다.
  */
 export type Phase =
   | 'waiting'
   | 'augment_select'
+  | 'augment_target'
   | 'preflop'
   | 'flop'
   | 'turn'

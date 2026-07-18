@@ -54,6 +54,180 @@
   font-size: 0.9rem;
 }
 
+/* ── 타이틀 화면 리뉴얼: 네이비 배경 + LED 반짝이 타이틀 + 원형 칩 버튼 ── */
+.title-screen-neon {
+  background:
+    radial-gradient(ellipse 70% 55% at 50% 22%, rgba(60, 90, 200, 0.28), transparent 65%),
+    radial-gradient(ellipse 90% 80% at 50% 100%, #0a1440 0%, #050b26 70%),
+    #030716;
+}
+
+.title-sparkle-wrap {
+  position: relative;
+  display: inline-block;
+  padding: 88px 132px;
+}
+
+.title-sparkle-layer {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 0;
+}
+
+.title-sparkle-dot {
+  position: absolute;
+  border-radius: 50%;
+  animation-name: sparkle-twinkle;
+  animation-iteration-count: infinite;
+  animation-timing-function: ease-in-out;
+}
+
+@keyframes sparkle-twinkle {
+  0%,
+  100% {
+    opacity: 0.15;
+    transform: scale(0.5);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.2);
+  }
+}
+
+.neon-title {
+  position: relative;
+  z-index: 1;
+  font-family: var(--font-display);
+  /* 기존 .game-title 3.4rem 대비 1.5배 */
+  font-size: 5.1rem;
+  color: var(--gold);
+  -webkit-text-stroke: 1.5px rgba(8, 6, 2, 0.6);
+  text-shadow:
+    0 0 3px rgba(5, 4, 1, 0.95),
+    0 0 8px rgba(5, 4, 1, 0.8),
+    0 0 10px rgba(245, 197, 66, 0.9),
+    0 0 22px rgba(245, 197, 66, 0.55),
+    0 0 38px rgba(245, 197, 66, 0.3),
+    0 3px 0 #7a5a10;
+}
+
+.chip-btn-row {
+  display: flex;
+  gap: 34px;
+  margin-top: 20px;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+
+/* 카지노 칩 스타일 원형 버튼 — 기존 gold-btn과 별개 클래스라 다른 화면의 버튼엔 영향 없음 */
+/* 버튼 자체는 투명 컨테이너이고, 두께 레이어(.chip-btn-side)를 먼저 그린 뒤 그 위에
+   칩 얼굴(.chip-btn-face)을 살짝 겹쳐 그려서 옆면이 아래로 삐져나온 것처럼 표현한다.
+   (::after 같은 음수 z-index 트릭은 부모 자신의 배경보다 항상 위에 그려져 무늬를
+   가려버리므로 사용하지 않고, 실제 DOM 자식 두 개를 쌓는 방식으로 구현) */
+.chip-btn {
+  width: 168px;
+  height: 168px;
+  position: relative;
+  border: none;
+  background: none;
+  padding: 0;
+  transition: transform 0.18s;
+}
+
+.chip-btn-side {
+  position: absolute;
+  left: 0;
+  top: 9px;
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  background: var(--chip-side);
+}
+
+/* 칩 얼굴 — 어두운 남색/검정 베이스 + 테두리를 따라 밝은 회색 사각 노치 8개
+   + 이중 원형 테두리(바깥 border, 안쪽은 radial-gradient로 그린 얇은 링) 구조.
+   레이어 순서(앞→뒤): ① 중앙 페이스 + 안쪽 링 라인(radial-gradient, 80%부터 투명)
+   ② 노치 밴드(repeating-conic-gradient, 8개 사각 노치 + 투명 간격)
+   ③ 노치 밴드 바탕색(background-color)
+   테두리/링 라인/노치 모두 한 단계 더 슬림하게 조정 */
+.chip-btn-face {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  border: 1px solid #9aa1a8;
+  background-color: #14181d;
+  background-image:
+    radial-gradient(
+      circle 84px at 50% 46%,
+      #262d35 0%,
+      #12161b 56%,
+      #0b0e11 64%,
+      #9aa1a8 66.7%,
+      #9aa1a8 67.3%,
+      transparent 80%
+    ),
+    repeating-conic-gradient(from -1.5deg, #ccd2d8 0deg 3deg, transparent 3deg 45deg);
+  box-shadow:
+    0 0 22px var(--chip-glow),
+    inset 0 3px 7px rgba(255, 255, 255, 0.16),
+    inset 0 -7px 14px rgba(0, 0, 0, 0.6),
+    0 10px 20px rgba(0, 0, 0, 0.55);
+  transition: box-shadow 0.18s;
+}
+
+.chip-btn:hover {
+  transform: translateY(-6px) scale(1.05);
+}
+
+.chip-btn:hover .chip-btn-face {
+  box-shadow:
+    0 0 36px var(--chip-glow-strong),
+    inset 0 3px 7px rgba(255, 255, 255, 0.22),
+    inset 0 -7px 14px rgba(0, 0, 0, 0.6),
+    0 14px 26px rgba(0, 0, 0, 0.65);
+}
+
+.chip-btn-gold {
+  --chip-side: #2a2210;
+  --chip-glow: rgba(245, 197, 66, 0.4);
+  --chip-glow-strong: rgba(245, 197, 66, 0.65);
+  --chip-subtitle: var(--gold);
+}
+
+.chip-btn-teal {
+  --chip-side: #0f2624;
+  --chip-glow: rgba(74, 217, 192, 0.4);
+  --chip-glow-strong: rgba(74, 217, 192, 0.65);
+  --chip-subtitle: var(--teal);
+}
+
+.chip-btn-title {
+  font-family: var(--font-display);
+  font-size: 1.05rem;
+  color: #f2f5f7;
+  letter-spacing: -0.3px;
+  line-height: 1.15;
+  white-space: nowrap;
+  text-shadow: 0 2px 4px rgba(0, 0, 0, 0.7);
+}
+
+.chip-btn-subtitle {
+  font-size: 0.68rem;
+  color: var(--chip-subtitle);
+  letter-spacing: 0.2px;
+  white-space: nowrap;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.6);
+}
+
 /* ── 상단 바 ── */
 .topbar {
   position: relative;
@@ -1010,6 +1184,10 @@
   white-space: nowrap;
 }
 
+.augment-chip-icon {
+  opacity: 0.85;
+}
+
 .augment-chip.rarity-silver {
   border-color: var(--silver);
   color: var(--silver);
@@ -1025,7 +1203,7 @@
 
 /* ═══ 멀티플레이 인게임 화면 ═══ */
 
-/* ── 증강 선택 (LoL 아레나 스타일 — 호버 시 설명 확장) ── */
+/* ── 증강 선택 (LoL 아레나 스타일 — 설명은 항상 표시, 호버는 시각적 강조만) ── */
 .mp-augment-screen {
   justify-content: center;
 }
@@ -1045,7 +1223,7 @@
 
 .mp-augment-pick {
   width: 210px;
-  min-height: 148px;
+  min-height: 210px;
   background: linear-gradient(170deg, #14303a, #0c1e26);
   border-radius: 12px;
   padding: 22px 18px;
@@ -1057,13 +1235,25 @@
   color: var(--text);
   border: 2px solid transparent;
   cursor: pointer;
-  transition: transform 0.2s, min-height 0.25s, box-shadow 0.2s;
+  transition: transform 0.2s, border-width 0.15s, box-shadow 0.2s;
 }
 
+/* 호버 시 설명을 펼치는 대신 그림자·두꺼운 테두리·굵은 이름으로 강조만 준다 */
 .mp-augment-pick:hover,
 .mp-augment-pick:focus-visible {
   transform: translateY(-10px) scale(1.05);
-  min-height: 232px;
+  border-width: 3px;
+  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.55);
+}
+
+.mp-augment-pick .augment-name {
+  font-weight: 600;
+  transition: font-weight 0.15s;
+}
+
+.mp-augment-pick:hover .augment-name,
+.mp-augment-pick:focus-visible .augment-name {
+  font-weight: 800;
 }
 
 .mp-augment-pick.rarity-silver {
@@ -1090,99 +1280,109 @@
   font-size: 0.86rem;
   color: var(--text-dim);
   line-height: 1.5;
-  max-height: 0;
-  opacity: 0;
-  overflow: hidden;
-  transition: max-height 0.25s ease, opacity 0.2s ease;
-}
-
-.mp-augment-pick:hover .mp-augment-pick-desc,
-.mp-augment-pick:focus-visible .mp-augment-pick-desc {
-  max-height: 160px;
-  opacity: 1;
 }
 
 /* ── 포커 테이블 화면 ── */
 .mp-table-screen {
-  align-items: center;
+  align-items: stretch;
   justify-content: flex-start;
   gap: 10px;
-  padding-top: 18px;
+  padding: 14px 16px 16px;
 }
 
 .mp-round-badge {
   position: relative;
   z-index: 3;
+  align-self: center;
   color: var(--text-dim);
   font-size: 0.85rem;
   letter-spacing: 1px;
 }
 
-.mp-table-oval {
-  position: relative;
-  z-index: 2;
-  width: min(720px, 92vw);
-  aspect-ratio: 16 / 10;
-  margin: 26px auto 6px;
-  border-radius: 50%;
-  background:
-    radial-gradient(ellipse 70% 60% at 50% 45%, rgba(30, 90, 105, 0.35), transparent 70%),
-    radial-gradient(ellipse at 50% 45%, #0f333d, #081a20 80%);
-  border: 10px solid #123039;
-  box-shadow: 0 0 0 3px #0a1f26, 0 20px 50px rgba(0, 0, 0, 0.6), inset 0 0 60px rgba(0, 0, 0, 0.5);
+.mp-game-layout {
+  display: flex;
+  gap: 14px;
+  flex: 1;
+  min-height: 0;
 }
 
-.mp-table-oval .board {
+.mp-table-main {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  flex: 1;
+  min-width: 0;
+}
+
+/* ── 테이블 영역: 상/좌/우/하 마름모 좌석 + 정중앙 커뮤니티/팟 (다크 그린 톤) ── */
+.mp-table-area {
+  position: relative;
+  z-index: 2;
+  flex: 1;
+  min-height: 480px;
+  border-radius: 18px;
+  background:
+    radial-gradient(ellipse 80% 65% at 50% 38%, rgba(30, 110, 80, 0.32), transparent 70%),
+    radial-gradient(ellipse at 50% 35%, #0f3d2e, #071b16 85%);
+  border: 8px solid #123a2c;
+  box-shadow: 0 0 0 3px #0a2419, 0 20px 50px rgba(0, 0, 0, 0.6), inset 0 0 60px rgba(0, 0, 0, 0.5);
+}
+
+.mp-center-board {
   position: absolute;
   top: 50%;
   left: 50%;
   transform: translate(-50%, -50%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
 }
 
-/* seatIndex 0~3을 시계 방향(하/우/상/좌)으로 고정 배치 */
-.mp-seat {
+/* seatIndex를 "내 자리 = 항상 하단 중앙"이 되도록 재계산한 슬롯을 상/좌/우/하 마름모로 고정 배치 */
+.mp-diamond-seat {
   position: absolute;
   display: flex;
   flex-direction: column;
   align-items: center;
   gap: 5px;
-  width: 148px;
+  width: 152px;
   transition: filter 0.2s, opacity 0.2s;
 }
 
-.mp-seat-pos-0 {
-  top: 100%;
+.mp-diamond-bottom {
+  bottom: 10px;
   left: 50%;
-  transform: translate(-50%, -38%);
+  transform: translateX(-50%);
 }
-.mp-seat-pos-1 {
+.mp-diamond-right {
   top: 50%;
-  left: 100%;
-  transform: translate(-48%, -50%);
+  right: 14px;
+  transform: translateY(-50%);
 }
-.mp-seat-pos-2 {
-  top: 0%;
+.mp-diamond-top {
+  top: 10px;
   left: 50%;
-  transform: translate(-50%, -62%);
+  transform: translateX(-50%);
 }
-.mp-seat-pos-3 {
+.mp-diamond-left {
   top: 50%;
-  left: 0%;
-  transform: translate(-52%, -50%);
+  left: 14px;
+  transform: translateY(-50%);
 }
 
-.mp-seat-cards {
+.mp-diamond-seat .mp-seat-cards {
   display: flex;
   gap: 4px;
 }
 
-.mp-seat-info {
+.mp-diamond-seat .mp-seat-info {
   display: flex;
   flex-direction: column;
   align-items: center;
   gap: 3px;
-  background: rgba(6, 18, 22, 0.8);
-  border: 1px solid #23505d;
+  background: rgba(6, 18, 22, 0.82);
+  border: 1px solid #1f5c46;
   border-radius: 8px;
   padding: 4px 10px;
   transition: border-color 0.2s, box-shadow 0.2s;
@@ -1198,7 +1398,7 @@
   gap: 4px;
   flex-wrap: wrap;
   justify-content: center;
-  max-width: 150px;
+  max-width: 152px;
 }
 
 .mp-seat-folded {
@@ -1243,23 +1443,46 @@
   z-index: 3;
 }
 
-/* ── 하단 베팅 액션 ── */
-.mp-action-dock {
-  position: relative;
-  z-index: 3;
-  min-height: 56px;
+/* ── 하단 중앙: 내 홀카드 + 베팅 액션 그리드 (참고 이미지의 하단 중앙 영역) ── */
+.mp-bottom-panel {
   display: flex;
   align-items: center;
   justify-content: center;
-  padding-bottom: 18px;
+  gap: 26px;
+  padding: 14px 20px;
+  min-height: 96px;
+  background: rgba(6, 20, 16, 0.7);
+  border: 1px solid #1f5c46;
+  border-radius: 14px;
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+
+.mp-bottom-panel-my-turn {
+  border-color: var(--gold);
+  box-shadow: 0 0 20px rgba(245, 197, 66, 0.35);
+}
+
+.mp-bottom-cards {
+  display: flex;
+  gap: 8px;
+}
+
+.mp-bottom-action {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 210px;
 }
 
 .mp-action-bar {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  flex-wrap: wrap;
-  justify-content: center;
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 8px;
+}
+
+.mp-action-bar .mp-raise-group,
+.mp-action-bar .bet-max {
+  grid-column: 1 / -1;
 }
 
 .mp-raise-group {
@@ -1282,7 +1505,232 @@
 .mp-waiting-turn {
   color: var(--text-dim);
   font-size: 0.95rem;
+  text-align: center;
   animation: blink 1s ease-in-out infinite alternate;
+}
+
+/* ── 우측 정보 패널: 채팅 / 족보 / 내기록 탭 ── */
+.mp-info-panel {
+  width: 260px;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  background: rgba(6, 16, 14, 0.88);
+  border: 1px solid #1f5c46;
+  border-radius: 14px;
+  overflow: hidden;
+}
+
+.mp-info-tabs {
+  display: flex;
+  border-bottom: 1px solid #1f5c46;
+}
+
+.mp-info-tab-btn {
+  flex: 1;
+  padding: 11px 4px;
+  background: transparent;
+  border: none;
+  border-bottom: 2px solid transparent;
+  color: var(--text-dim);
+  font-size: 0.85rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: color 0.15s, border-color 0.15s;
+}
+
+.mp-info-tab-btn:hover {
+  color: var(--text);
+}
+
+.mp-info-tab-active {
+  color: var(--gold);
+  border-bottom-color: var(--gold);
+}
+
+.mp-info-content {
+  flex: 1;
+  overflow-y: auto;
+  padding: 14px;
+}
+
+.mp-info-placeholder {
+  color: var(--text-dim);
+  font-size: 0.85rem;
+  text-align: center;
+  margin-top: 24px;
+}
+
+/* 족보 탭 — 내 홀카드+공개된 커뮤니티 카드 기준 실시간 계산, 현재 최고 족보 강조 */
+.mp-hand-progress-hint {
+  font-size: 0.78rem;
+  color: var(--text-dim);
+  text-align: center;
+  margin-bottom: 12px;
+  line-height: 1.4;
+}
+
+.mp-hand-progress-list {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.mp-hand-progress-item {
+  padding: 9px 12px;
+  border-radius: 7px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  color: var(--text-dim);
+  font-size: 0.88rem;
+  font-weight: 600;
+  transition: background 0.2s, box-shadow 0.2s, color 0.2s, border-color 0.2s;
+}
+
+.mp-hand-progress-active {
+  background: rgba(245, 197, 66, 0.16);
+  border-color: var(--gold);
+  color: var(--gold);
+  font-weight: 900;
+  box-shadow: 0 0 14px rgba(245, 197, 66, 0.35);
+}
+
+/* ── 즉시형 증강 대상 지정 모달 (음침한 눈/카멜레온/당근이세요?) ── */
+.mp-target-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(4, 12, 10, 0.82);
+  backdrop-filter: blur(3px);
+}
+
+.mp-target-modal {
+  width: min(420px, 90vw);
+  background: linear-gradient(170deg, #10241c, #081511);
+  border: 2px solid var(--gold);
+  border-radius: 16px;
+  padding: 26px 28px;
+  text-align: center;
+  box-shadow: 0 0 40px rgba(245, 197, 66, 0.3), 0 20px 50px rgba(0, 0, 0, 0.6);
+}
+
+.mp-target-modal.rarity-silver {
+  border-color: var(--silver);
+}
+.mp-target-modal.rarity-gold {
+  border-color: var(--gold);
+}
+.mp-target-modal.rarity-prismatic {
+  border-color: var(--prismatic);
+}
+
+.mp-target-title {
+  font-size: 1.3rem;
+  color: var(--gold);
+  margin-bottom: 6px;
+}
+
+.mp-target-desc {
+  font-size: 0.85rem;
+  color: var(--text-dim);
+  margin-bottom: 16px;
+  line-height: 1.5;
+}
+
+.mp-target-hint {
+  font-size: 0.92rem;
+  color: var(--text);
+  font-weight: 700;
+  margin-bottom: 16px;
+}
+
+.mp-target-choice-row {
+  display: flex;
+  gap: 12px;
+  justify-content: center;
+  flex-wrap: wrap;
+}
+
+.mp-target-choice-btn {
+  padding: 10px 18px;
+  border-radius: 8px;
+  border: 1px solid var(--text-dim);
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--text);
+  font-size: 0.92rem;
+  font-weight: 700;
+  transition: border-color 0.15s, color 0.15s, background 0.15s;
+}
+
+.mp-target-choice-btn:hover {
+  border-color: var(--gold);
+  color: var(--gold);
+  background: rgba(245, 197, 66, 0.08);
+}
+
+.mp-target-card-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 10px;
+  border-radius: 10px;
+  border: 1px solid var(--text-dim);
+  background: rgba(255, 255, 255, 0.03);
+  color: var(--text-dim);
+  font-size: 0.8rem;
+  transition: border-color 0.15s, color 0.15s;
+}
+
+.mp-target-card-btn:hover {
+  border-color: var(--gold);
+  color: var(--gold);
+}
+
+.mp-target-rank-grid {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 8px;
+}
+
+.mp-target-rank-btn {
+  padding: 10px 0;
+  border-radius: 8px;
+  border: 1px solid var(--text-dim);
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--text);
+  font-weight: 800;
+  transition: border-color 0.15s, color 0.15s, background 0.15s;
+}
+
+.mp-target-rank-btn:hover {
+  border-color: var(--gold);
+  color: var(--gold);
+  background: rgba(245, 197, 66, 0.08);
+}
+
+.mp-target-suit-btn {
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  border: 1px solid var(--text-dim);
+  background: rgba(255, 255, 255, 0.04);
+  font-size: 1.6rem;
+  transition: border-color 0.15s, transform 0.15s;
+}
+
+/* 카드 앞면(밝은 배경)용 .suit-black은 이 어두운 배경 버튼에선 너무 안 보여서 밝게 재정의 */
+.mp-target-suit-btn.suit-black {
+  color: #e8ecef;
+}
+
+.mp-target-suit-btn:hover {
+  border-color: var(--gold);
+  transform: scale(1.08);
 }
 
 /* ── 쇼다운 결과 배너 ── */
@@ -1304,18 +1752,38 @@
 }
 
 .mp-result-line {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
   text-align: center;
   color: var(--text);
   font-size: 1.05rem;
-  line-height: 2.1;
 }
 
-.mp-result-line .hand-capsule,
-.mp-result-line .mp-result-payout,
-.mp-result-line .mp-result-multiplier {
-  display: inline-block;
-  margin: 0 6px;
-  vertical-align: middle;
+.mp-result-line + .mp-result-line {
+  margin-top: 14px;
+  padding-top: 14px;
+  border-top: 1px solid rgba(255, 255, 255, 0.12);
+}
+
+.mp-result-winner-name {
+  font-size: 1.1rem;
+}
+
+/* 족보 이름 — 승자 이름과 배당 사이, 절대 놓칠 수 없게 크고 굵게 강조 */
+.mp-result-category {
+  font-size: 1.6rem;
+  font-weight: 900;
+  color: var(--gold);
+  letter-spacing: 1px;
+  text-shadow: 0 0 16px rgba(245, 197, 66, 0.6);
+}
+
+.mp-result-payout-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
 }
 
 .mp-result-payout {
@@ -1343,5 +1811,27 @@
 
   .seat-player {
     margin-right: 0;
+  }
+
+  .mp-game-layout {
+    flex-direction: column;
+  }
+
+  .mp-info-panel {
+    width: auto;
+    max-height: 220px;
+  }
+
+  .mp-table-area {
+    min-height: 380px;
+  }
+
+  .mp-diamond-seat {
+    width: 118px;
+  }
+
+  .mp-bottom-panel {
+    flex-direction: column;
+    gap: 12px;
   }
 }

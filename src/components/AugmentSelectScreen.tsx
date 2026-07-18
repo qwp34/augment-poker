@@ -15,7 +15,7 @@ interface AugmentSelectScreenProps {
   onSelect: (id: string) => void;
 }
 
-/** 증강 선택 화면 — LoL 아레나 스타일. 기본은 이름/희귀도만, 호버 시 설명이 펼쳐진다 */
+/** 증강 선택 화면 — LoL 아레나 스타일. 설명은 항상 보이고, 호버는 그림자/굵은 글씨/두꺼운 테두리로 강조만 한다 */
 export function AugmentSelectScreen({ round, choices, onSelect }: AugmentSelectScreenProps) {
   const augments = choices.map(findAugment).filter((a): a is Augment => !!a);
   const waiting = augments.length === 0;

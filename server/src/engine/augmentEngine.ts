@@ -3,17 +3,31 @@
  * augments.json에 항목만 추가하면 코드 수정 없이 증강이 늘어난다.
  */
 
+import type { Card, Rank, Suit } from './types';
 import type { HandCategory } from './handEvaluator';
 
 export type AugmentRarity = 'silver' | 'gold' | 'prismatic';
 
-export type AugmentTrigger = 'on_showdown' | 'on_hand_start' | 'on_round_start' | 'on_shuffle';
+/**
+ * on_pick: 다른 트리거들(쇼다운/핸드 시작 등 매 핸드 반복 발동)과 달리, 선택되는
+ * 즉시 1회성으로 해소되는 증강 — 대상 지정이 필요하면 PokerRoom이 별도 phase에서
+ * 대상을 받아 처리한다 (음침한 눈 / 카멜레온 / 당근이세요?).
+ */
+export type AugmentTrigger = 'on_showdown' | 'on_hand_start' | 'on_round_start' | 'on_shuffle' | 'on_pick';
 
 export type AugmentEffectType =
   | 'payout_multiplier'
   | 'card_swap'
   | 'jokerize_random'
-  | 'shuffle_bias';
+  | 'shuffle_bias'
+  | 'reveal_opponent_card'
+  | 'edit_own_card'
+  | 'swap_with_opponent';
+
+/** trigger가 'on_pick'인 증강 — 선택 즉시 대상 지정 → 효과 적용이 필요하다 */
+export function isInstantAugment(augment: Augment): boolean {
+  return augment.trigger === 'on_pick';
+}
 
 export interface AugmentCondition {
   handType?: HandCategory;
@@ -106,4 +120,39 @@ export function rollAugmentChoices(pool: Augment[], owned: Augment[], count = 3)
     [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
   }
   return shuffled.slice(0, count);
+}
+
+// ─────────────────────────── on_pick 증강: 홀카드 조작 (순수 함수) ───────────────────────────
+//
+// 아래 세 함수는 상태를 직접 건드리지 않는 순수 함수다 — 실제 서버 상태(PokerRoom의
+// private holes 맵) 반영, 메시지 전송(누구에게 무엇을 보여줄지), 유효성 검증은 전부
+// 호출부(PokerRoom)의 책임이다. 여기서는 "카드 배열이 이렇게 바뀐다"는 규칙만 계산한다.
+
+export type HoleIndex = 0 | 1;
+
+/** 카멜레온 — 홀카드 1장을 원하는 숫자/무늬로 교체한 새 배열을 반환한다 (원본 불변) */
+export function applyEditCard(hole: readonly Card[], index: HoleIndex, rank: Rank, suit: Suit): Card[] {
+  const next = [...hole];
+  next[index] = { id: `chameleon-${suit}-${rank}-${Math.random().toString(36).slice(2, 8)}`, suit, rank };
+  return next;
+}
+
+/** 당근이세요? — 두 플레이어의 홀카드 중 지정된 1장씩을 맞바꾼 결과를 반환한다 (원본 불변) */
+export function swapCards(
+  myHole: readonly Card[],
+  theirHole: readonly Card[],
+  myIndex: HoleIndex,
+  theirIndex: HoleIndex,
+): { mine: Card[]; theirs: Card[] } {
+  const mine = [...myHole];
+  const theirs = [...theirHole];
+  const tmp = mine[myIndex];
+  mine[myIndex] = theirs[theirIndex];
+  theirs[theirIndex] = tmp;
+  return { mine, theirs };
+}
+
+/** 음침한 눈 — 대상 홀카드 1장을 그대로 조회한다 (조회만, 상태 변경 없음) */
+export function revealCard(hole: readonly Card[], index: HoleIndex): Card {
+  return hole[index];
 }
