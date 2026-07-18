@@ -1,5 +1,6 @@
 /** 증강 포커 서버 부트스트랩 — Express(HTTP) + Colyseus(WebSocket) 동일 포트 */
 
+import 'dotenv/config';
 import http from 'http';
 import express from 'express';
 import cors from 'cors';
