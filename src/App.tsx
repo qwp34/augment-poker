@@ -8,7 +8,8 @@ import { WinBanner } from './components/WinBanner';
 import { TopBar } from './components/TopBar';
 import { LogPanel } from './components/LogPanel';
 import { MultiplayerLobby } from './components/MultiplayerLobby';
-import { TitleSparkles } from './components/TitleSparkles';
+import { TitleMarquee } from './components/TitleMarquee';
+import { TitleBackdrop } from './components/TitleBackdrop';
 import { ChipRing } from './components/ChipRing';
 import { findByEffect } from './engine/augmentEngine';
 import { evaluateBest } from './engine/handEvaluator';
@@ -80,18 +81,9 @@ export default function App() {
   if (!started) {
     return (
       <div className="screen title-screen title-screen-neon">
+        <TitleBackdrop />
         <div className="scanlines" />
-        <div className="title-sparkle-wrap">
-          <TitleSparkles />
-          <motion.h1
-            className="game-title neon-title"
-            initial={{ y: -40, opacity: 0 }}
-            animate={{ y: 0, opacity: 1 }}
-            transition={{ type: 'spring', stiffness: 200, damping: 18 }}
-          >
-            증강포커
-          </motion.h1>
-        </div>
+        <TitleMarquee />
         <div className="chip-btn-row">
           <motion.button
             className="chip-btn chip-btn-gold"

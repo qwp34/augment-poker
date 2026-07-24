@@ -54,45 +54,212 @@
   font-size: 0.9rem;
 }
 
-/* ── 타이틀 화면 리뉴얼: 네이비 배경 + LED 반짝이 타이틀 + 원형 칩 버튼 ── */
+/* ── 타이틀 화면 리뉴얼: 카지노 마퀴 간판 스타일 ── */
 .title-screen-neon {
+  position: relative;
   background:
     radial-gradient(ellipse 70% 55% at 50% 22%, rgba(60, 90, 200, 0.28), transparent 65%),
     radial-gradient(ellipse 90% 80% at 50% 100%, #0a1440 0%, #050b26 70%),
     #030716;
 }
 
-.title-sparkle-wrap {
-  position: relative;
-  display: inline-block;
-  padding: 88px 132px;
+/* 배경 최하단에 깔리는 은은한 카드무늬 장식 (TitleBackdrop.tsx) */
+.title-backdrop {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+  z-index: 0;
 }
 
-.title-sparkle-layer {
+.backdrop-suit {
+  position: absolute;
+  line-height: 1;
+  user-select: none;
+}
+
+/* 마퀴 블록 전체 래퍼 (TitleMarquee.tsx) */
+.title-marquee-wrap {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  margin-bottom: 22px;
+}
+
+/* 마퀴 위에 부채꼴로 펼쳐진 에이스 4장 — 실제 게임 카드(.pcard-front)와 동일한 배색 */
+.marquee-fan-cards {
+  position: relative;
+  width: min(480px, 82vw);
+  height: 78px;
+  z-index: 1;
+  pointer-events: none;
+}
+
+.fan-card {
+  position: absolute;
+  top: 0;
+  width: 52px;
+  height: 74px;
+  box-sizing: border-box;
+  padding: 6px 7px;
+  border-radius: 8px;
+  background: linear-gradient(160deg, #ffffff, #ecebe4);
+  border: 1px solid rgba(212, 160, 60, 0.75);
+  box-shadow: 0 8px 16px rgba(0, 0, 0, 0.55);
+  transform-origin: bottom center;
+}
+
+.fan-card-rank {
+  font-weight: 800;
+  font-size: 15px;
+  line-height: 1;
+}
+
+.fan-card-suit {
+  font-size: 13px;
+  line-height: 1;
+}
+
+.fan-card-center {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 32px;
+}
+
+.fan-card-black .fan-card-rank,
+.fan-card-black .fan-card-suit,
+.fan-card-black .fan-card-center {
+  color: #1e2230;
+}
+
+.fan-card-red .fan-card-rank,
+.fan-card-red .fan-card-suit,
+.fan-card-red .fan-card-center {
+  color: #cf2e2e;
+}
+
+/* 전구 테두리가 도는 간판 프레임 */
+.marquee-frame {
+  position: relative;
+  z-index: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  max-width: min(720px, 92vw);
+  padding: clamp(18px, 3.4vw, 34px) clamp(30px, 7vw, 66px);
+  border-radius: 10px;
+  background:
+    repeating-linear-gradient(90deg, #0e2258 0px, #143070 6px, #091840 12px),
+    linear-gradient(180deg, #143070 0%, #060f2a 100%);
+  box-shadow:
+    0 0 0 3px #d9a62e,
+    0 0 0 6px #060f2a,
+    inset 0 0 30px rgba(0, 0, 0, 0.55),
+    0 20px 40px rgba(0, 0, 0, 0.7);
+}
+
+.marquee-bulb-layer {
   position: absolute;
   inset: 0;
   pointer-events: none;
   z-index: 0;
 }
 
-.title-sparkle-dot {
+.marquee-bulb {
   position: absolute;
+  width: 10px;
+  height: 10px;
+  margin: -5px;
   border-radius: 50%;
-  animation-name: sparkle-twinkle;
-  animation-iteration-count: infinite;
-  animation-timing-function: ease-in-out;
+  background: radial-gradient(circle at 35% 30%, #fff7dd, #ffd25c 55%, #b8720f 100%);
+  animation: bulbChaseA 1.2s steps(1) infinite;
 }
 
-@keyframes sparkle-twinkle {
+.marquee-bulb-b {
+  animation-name: bulbChaseB;
+}
+
+@keyframes bulbChaseA {
   0%,
   100% {
-    opacity: 0.15;
-    transform: scale(0.5);
+    opacity: 1;
+    box-shadow: 0 0 8px 3px rgba(255, 214, 120, 0.9);
+  }
+  50% {
+    opacity: 0.25;
+    box-shadow: 0 0 2px 1px rgba(255, 214, 120, 0.3);
+  }
+}
+
+@keyframes bulbChaseB {
+  0%,
+  100% {
+    opacity: 0.25;
+    box-shadow: 0 0 2px 1px rgba(255, 214, 120, 0.3);
   }
   50% {
     opacity: 1;
-    transform: scale(1.2);
+    box-shadow: 0 0 8px 3px rgba(255, 214, 120, 0.9);
   }
+}
+
+/* 프레임 하단 좌우로 걸쳐 튀어나온 금화 장식 */
+.marquee-coin {
+  position: absolute;
+  bottom: -20px;
+  display: flex;
+  gap: 8px;
+  z-index: 2;
+  pointer-events: none;
+}
+
+.marquee-coin-left {
+  left: 4%;
+}
+
+.marquee-coin-right {
+  right: 4%;
+}
+
+.coin-circle {
+  position: relative;
+  width: 42px;
+  height: 42px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: radial-gradient(circle at 38% 30%, #ffe9a8 0%, #e8b84a 30%, #a8741c 70%, #6e4a0e 100%);
+  box-shadow: 0 6px 14px rgba(0, 0, 0, 0.6);
+}
+
+.coin-circle:nth-child(2) {
+  transform: translateY(-14px);
+}
+
+.coin-circle::before {
+  content: '';
+  position: absolute;
+  inset: 4px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 40% 32%, #4a4e57 0%, #2c2f36 50%, #15171c 100%);
+  box-shadow: inset 0 2px 6px rgba(0, 0, 0, 0.6);
+}
+
+.coin-circle-glyph {
+  position: relative;
+  z-index: 1;
+  font-size: 20px;
+  line-height: 1;
+  background: linear-gradient(180deg, #ffe9a8 0%, #f2c14e 45%, #a8741c 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
 }
 
 .neon-title {
@@ -110,6 +277,12 @@
     0 0 22px rgba(245, 197, 66, 0.55),
     0 0 38px rgba(245, 197, 66, 0.3),
     0 3px 0 #7a5a10;
+}
+
+.marquee-title {
+  margin: 0;
+  font-size: clamp(2.6rem, 7vw, 5.1rem);
+  white-space: nowrap;
 }
 
 .chip-btn-row {
@@ -194,6 +367,29 @@
     inset 0 0 0 6px rgba(199, 206, 213, 0.2),
     inset 0 5px 10px rgba(255, 255, 255, 0.07),
     inset 0 -10px 18px rgba(0, 0, 0, 0.6);
+}
+
+/* 안쪽 점선 링 + 상단 유광 하이라이트 — 카지노 칩 느낌을 살리는 장식용 오버레이, 클릭 영역/로직에는 무관 */
+.chip-btn-inner::before {
+  content: '';
+  position: absolute;
+  inset: 13px;
+  border-radius: 50%;
+  border: 2px dashed rgba(255, 255, 255, 0.16);
+  pointer-events: none;
+}
+
+.chip-btn-inner::after {
+  content: '';
+  position: absolute;
+  top: 10%;
+  left: 18%;
+  right: 18%;
+  height: 34%;
+  border-radius: 50%;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.16), rgba(255, 255, 255, 0) 75%);
+  filter: blur(1px);
+  pointer-events: none;
 }
 
 .chip-btn:hover {
