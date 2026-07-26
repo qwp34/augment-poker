@@ -22,11 +22,13 @@ export function MultiplayerLobby({ onClose }: { onClose: () => void }) {
     myAugmentChoices,
     chooseAugment,
     sendAction,
+    swapHoleCard,
     lastResult,
     gameOver,
     pendingAugmentTarget,
     chooseAugmentTarget,
     lastAugmentReveal,
+    cardChangeEvent,
   } = useMultiplayerRoom(name);
 
   // 서버 거부 메시지(방장 아님, 잘못된 레이즈 금액 등)는 화면에 상관없이 토스트로 띄운다
@@ -117,7 +119,9 @@ export function MultiplayerLobby({ onClose }: { onClose: () => void }) {
             mySessionId={room.sessionId}
             lastResult={lastResult}
             augmentReveal={lastAugmentReveal}
+            cardChangeEvent={cardChangeEvent}
             onAction={sendAction}
+            onSwapCard={swapHoleCard}
           />
         )}
 

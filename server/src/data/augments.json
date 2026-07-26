@@ -45,9 +45,9 @@
     "id": "aug_sinister_eye",
     "name": "음침한 눈",
     "rarity": "gold",
-    "trigger": "on_pick",
+    "trigger": "on_hand_start",
     "effect": { "type": "reveal_opponent_card", "value": 1 },
-    "description": "선택 즉시 — 상대 1명을 지목해 그의 홀카드 1장을 나에게만 공개한다 (1회성)"
+    "description": "매 핸드 시작 시 — 상대 1명을 지목해 그의 홀카드 1장을 나에게만 공개한다"
   },
   {
     "id": "aug_chameleon",
@@ -55,14 +55,14 @@
     "rarity": "prismatic",
     "trigger": "on_pick",
     "effect": { "type": "edit_own_card", "value": 1 },
-    "description": "선택 즉시 — 내 홀카드 1장을 원하는 숫자/무늬로 자유롭게 바꾼다 (1회성)"
+    "description": "최초 선택 시 1회 — 내 홀카드 1장을 원하는 숫자/무늬로 자유롭게 바꾼다 (그 뒤로는 재발동하지 않음)"
   },
   {
     "id": "aug_carrot",
     "name": "당근이세요?",
     "rarity": "gold",
-    "trigger": "on_pick",
+    "trigger": "on_hand_start",
     "effect": { "type": "swap_with_opponent", "value": 1 },
-    "description": "선택 즉시 — 상대 1명을 지목해 내 홀카드 1장과 상대 홀카드 1장을 맞바꾼다 (1회성)"
+    "description": "매 핸드 시작 시 — 상대 1명을 지목해 내 홀카드 1장과 상대 홀카드 1장을 맞바꾼다"
   }
 ]

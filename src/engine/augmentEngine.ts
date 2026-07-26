@@ -8,9 +8,12 @@ import type { HandCategory } from './handEvaluator';
 export type AugmentRarity = 'silver' | 'gold' | 'prismatic';
 
 /**
- * on_pick: 선택되는 즉시 1회성으로 해소되는 증강(음침한 눈/카멜레온/당근이세요?).
- * 멀티플레이 서버(PokerRoom)에서만 대상 지정 흐름과 함께 처리되며, 로컬 싱글플레이
- * 엔진(gameStore)은 아직 이 트리거를 실행할 수 없으므로 증강 풀에서 제외한다.
+ * 보유한 증강은 원칙적으로 매 라운드(핸드) 시작 시점마다 재발동한다. 유일한 예외는
+ * trigger가 'on_pick'인 증강(카멜레온) — 최초 선택 직후 한 번만 발동하고 그 뒤로는
+ * 재발동하지 않는다(멀티플레이 서버에서만 실제로 처리됨). 대상 지정(상대/카드/숫자·무늬)이
+ * 필요한 증강(음침한 눈/카멜레온/당근이세요?)은 멀티플레이 서버(PokerRoom)에서만 대상
+ * 지정 흐름과 함께 처리되며, 로컬 싱글플레이 엔진(gameStore)은 아직 그 흐름을 실행할 수
+ * 없으므로 needsTargetSelection()으로 걸러 증강 풀에서 제외한다.
  */
 export type AugmentTrigger = 'on_showdown' | 'on_hand_start' | 'on_round_start' | 'on_shuffle' | 'on_pick';
 
@@ -22,6 +25,24 @@ export type AugmentEffectType =
   | 'reveal_opponent_card'
   | 'edit_own_card'
   | 'swap_with_opponent';
+
+/**
+ * 대상 지정(상대 플레이어/카드/숫자·무늬)이 필요한 효과인지 — (일회성이 아닌 한) 매 핸드
+ * 시작 시 새로 딜링된 홀카드를 대상으로 다시 대상을 받아야 한다
+ * (음침한 눈 / 카멜레온 / 당근이세요?).
+ */
+export function needsTargetSelection(augment: Augment): boolean {
+  return (
+    augment.effect.type === 'reveal_opponent_card' ||
+    augment.effect.type === 'edit_own_card' ||
+    augment.effect.type === 'swap_with_opponent'
+  );
+}
+
+/** trigger가 'on_pick'인 증강 — 보유 중 딱 한 번만 발동하고, 그 뒤로는 영구히 재발동하지 않는다 (카멜레온) */
+export function isOneShotAugment(augment: Augment): boolean {
+  return augment.trigger === 'on_pick';
+}
 
 export interface AugmentCondition {
   handType?: HandCategory;

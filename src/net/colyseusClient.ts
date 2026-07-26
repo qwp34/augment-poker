@@ -4,7 +4,18 @@ import { Client } from 'colyseus.js';
 
 export const ROOM_NAME = 'poker_room';
 
-const SERVER_URL = import.meta.env.VITE_SERVER_URL || 'ws://localhost:2567';
+/**
+ * VITE_SERVER_URL이 없을 때의 기본값 — 'ws://localhost:2567'로 고정하면 LAN의 다른 기기에서
+ * 접속했을 때 그 기기 자신의 localhost를 가리키게 되어 서버에 연결할 수 없다. 대신 지금 페이지를
+ * 연 호스트명(window.location.hostname)을 그대로 재사용해 같은 서버로 자동 연결되게 한다 —
+ * localhost로 열면 localhost:2567, LAN IP(예: 192.168.x.x:5173)로 열면 같은 IP의 2567로 연결된다.
+ */
+function defaultServerUrl(): string {
+  const protocol = window.location.protocol === 'https:' ? 'wss' : 'ws';
+  return `${protocol}://${window.location.hostname}:2567`;
+}
+
+const SERVER_URL = import.meta.env.VITE_SERVER_URL || defaultServerUrl();
 
 export const client = new Client(SERVER_URL);
 

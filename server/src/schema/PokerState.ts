@@ -46,14 +46,21 @@ export class PlayerState extends Schema {
   @type([CardSchema]) revealedHole = new ArraySchema<CardSchema>();
   /** 보유 증강 id 목록 — 라운드가 지나도 비워지지 않고 누적된다 */
   @type(['string']) augmentIds = new ArraySchema<string>();
+  /**
+   * 일회성 증강(trigger: 'on_pick' — 카멜레온)이 이미 한 번 발동해 소모된 id 목록.
+   * 라운드가 바뀌어도 절대 비워지지 않는다 — 여기 담긴 id는 계속 보유하고 있어도
+   * 다시는 대상 지정 큐에 들어가지 않는다(효과 소모 처리).
+   */
+  @type(['string']) usedOneShotAugmentIds = new ArraySchema<string>();
   /** 이번 라운드 증강 선택지 id (선택 완료 시 비움) */
   @type(['string']) augmentChoices = new ArraySchema<string>();
   /**
-   * 방금 고른 증강이 'on_pick'(즉시 1회성 — 음침한 눈/카멜레온/당근이세요?)인데
-   * 아직 대상 지정이 끝나지 않았으면 그 증강 id. 해소되면 빈 문자열로 돌아간다.
-   * 클라이언트는 이 값이 자기 자신의 sessionId에 채워지면 대상 지정 UI를 띄우면 된다.
+   * 대상 지정이 필요한 증강(음침한 눈/카멜레온/당근이세요?)을 보유하고 있으면, 매 핸드
+   * 시작 시 이 값이 현재 대상 지정을 기다리는 증강 id로 채워진다. 한 플레이어가 그런
+   * 증강을 여러 개 보유했다면 획득 순서대로 하나씩 채워지고, 전부 해소되면 빈 문자열로
+   * 돌아간다 — 다음 핸드가 시작되면 같은 증강이라도 다시 채워진다(1회성 아님).
    */
-  @type('string') pendingInstantAugment = '';
+  @type('string') pendingTargetAugment = '';
 }
 
 /**
@@ -62,9 +69,10 @@ export class PlayerState extends Schema {
  *   → showdown → round_end → (다음 라운드는 다시 augment_select로 순환)
  * 베팅은 더 이상 하나의 'betting' phase가 아니라 preflop/flop/turn/river 각각이
  * 곧 phase 값이다 — 별도 street 필드를 두지 않고 phase 자체가 스트리트를 표현한다.
- * augment_target: 이번 라운드에 'on_pick' 증강을 고른 플레이어가 있을 때만 거치는
- * 단계 — 홀카드가 갓 딜링된 직후, 베팅 시작 전에 대상(플레이어/카드)을 지정해
- * 효과(카드 확인/변경/교환)를 해소한다. 아무도 즉시형 증강을 고르지 않았으면 건너뛴다.
+ * augment_target: 대상 지정이 필요한 증강(음침한 눈/카멜레온/당근이세요?)을 보유한
+ * 플레이어가 있을 때만 거치는 단계 — 매 핸드, 홀카드가 갓 딜링된 직후·베팅 시작 전에
+ * 대상(플레이어/카드)을 지정해 효과(카드 확인/변경/교환)를 해소한다. 그런 증강을 보유한
+ * 플레이어가 아무도 없으면 건너뛴다. 보유하고 있는 한 이 phase는 라운드마다 반복된다.
  */
 export type Phase =
   | 'waiting'

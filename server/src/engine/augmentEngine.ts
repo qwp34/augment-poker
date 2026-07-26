@@ -9,8 +9,10 @@ import type { HandCategory } from './handEvaluator';
 export type AugmentRarity = 'silver' | 'gold' | 'prismatic';
 
 /**
- * on_pick: 다른 트리거들(쇼다운/핸드 시작 등 매 핸드 반복 발동)과 달리, 선택되는
- * 즉시 1회성으로 해소되는 증강 — 대상 지정이 필요하면 PokerRoom이 별도 phase에서
+ * 보유한 증강은 원칙적으로 매 라운드(핸드) 시작 시점마다 재발동한다. 유일한 예외는
+ * trigger가 'on_pick'인 증강(카멜레온) — 최초 선택 직후의 첫 발동 한 번만 효과가
+ * 적용되고, 그 뒤로는 계속 보유하고 있어도 다시 발동하지 않는다(효과 소모 처리).
+ * 대상 지정(상대/카드/숫자·무늬)이 필요한 증강은 PokerRoom이 augment_target phase에서
  * 대상을 받아 처리한다 (음침한 눈 / 카멜레온 / 당근이세요?).
  */
 export type AugmentTrigger = 'on_showdown' | 'on_hand_start' | 'on_round_start' | 'on_shuffle' | 'on_pick';
@@ -24,9 +26,35 @@ export type AugmentEffectType =
   | 'edit_own_card'
   | 'swap_with_opponent';
 
-/** trigger가 'on_pick'인 증강 — 선택 즉시 대상 지정 → 효과 적용이 필요하다 */
-export function isInstantAugment(augment: Augment): boolean {
+/**
+ * 대상 지정(상대 플레이어/카드/숫자·무늬)이 필요한 효과인지 — (일회성이 아닌 한) 매 핸드
+ * 시작 시 새로 딜링된 홀카드를 대상으로 다시 대상을 받아야 한다
+ * (음침한 눈 / 카멜레온 / 당근이세요?).
+ */
+export function needsTargetSelection(augment: Augment): boolean {
+  return (
+    augment.effect.type === 'reveal_opponent_card' ||
+    augment.effect.type === 'edit_own_card' ||
+    augment.effect.type === 'swap_with_opponent'
+  );
+}
+
+/** trigger가 'on_pick'인 증강 — 보유 중 딱 한 번만 발동하고, 그 뒤로는 영구히 재발동하지 않는다 (카멜레온) */
+export function isOneShotAugment(augment: Augment): boolean {
   return augment.trigger === 'on_pick';
+}
+
+/**
+ * 보유 증강 중 이번 핸드 시작 시 대상 지정이 필요한 것만 골라낸다. owned는 반드시
+ * 획득(선택) 순서로 정렬돼 들어와야 하며, 이 함수는 그 순서를 그대로 보존한다 —
+ * 여러 증강을 동시에 보유하면 이 순서대로 하나씩 대상 지정 UI가 뜬다.
+ * usedOneShotIds에 담긴 id의 일회성 증강(카멜레온)은 이미 소모된 것으로 보고 제외한다.
+ */
+export function collectHandStartTargetQueue(
+  owned: Augment[],
+  usedOneShotIds: readonly string[] = [],
+): Augment[] {
+  return owned.filter((a) => needsTargetSelection(a) && !(isOneShotAugment(a) && usedOneShotIds.includes(a.id)));
 }
 
 export interface AugmentCondition {
@@ -122,7 +150,7 @@ export function rollAugmentChoices(pool: Augment[], owned: Augment[], count = 3)
   return shuffled.slice(0, count);
 }
 
-// ─────────────────────────── on_pick 증강: 홀카드 조작 (순수 함수) ───────────────────────────
+// ─────────────────────────── 대상 지정형 증강: 홀카드 조작 (순수 함수) ───────────────────────────
 //
 // 아래 세 함수는 상태를 직접 건드리지 않는 순수 함수다 — 실제 서버 상태(PokerRoom의
 // private holes 맵) 반영, 메시지 전송(누구에게 무엇을 보여줄지), 유효성 검증은 전부

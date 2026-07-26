@@ -72,7 +72,19 @@ export interface ClientGameState {
   players: ClientPlayer[];
 }
 
-export type BettingActionType = 'fold' | 'check' | 'call' | 'raise' | 'allin';
+/**
+ * 한게임 스타일 정형 배팅 액션 — 금액은 서버가 팟/베팅 상태로 직접 계산한다(자유 금액 입력 없음).
+ * bet_bb(삥)/bet_double(따당)은 같은 버튼 자리에서 currentBet===0 여부로 양자택일 전송한다.
+ */
+export type BettingActionType =
+  | 'fold'
+  | 'check'
+  | 'call'
+  | 'bet_bb'
+  | 'bet_double'
+  | 'bet_quarter'
+  | 'bet_half'
+  | 'allin';
 
 export interface ResultWinner {
   sessionId: string;
@@ -116,6 +128,17 @@ export interface AugmentRevealInfo {
   card: ClientCard;
 }
 
+/**
+ * 카드가 바뀌는 증강(카드 재구성/카멜레온/당근이세요?)이 발동한 순간 전원에게 오는 공개
+ * 브로드캐스트 — 실제 카드 값은 담기지 않는다("어느 자리의 몇 번째 카드가 바뀌었는지"만).
+ * 뒷면 카드라도 글로우 연출과 짧은 텍스트 알림을 띄우는 데 쓰인다.
+ */
+export interface CardChangeEvent {
+  augmentId: string;
+  augmentName: string;
+  changes: { sessionId: string; playerName: string; cardIndex: 0 | 1 }[];
+}
+
 const ENTRY_NOT_FOUND_MESSAGE = '입장할 수 없습니다 — 방이 존재하지 않거나 이미 종료되었습니다';
 const ENTRY_FULL_MESSAGE = '입장할 수 없습니다 — 방 인원이 가득 찼습니다 (최대 4명)';
 const ENTRY_GENERIC_MESSAGE = '입장할 수 없습니다';
@@ -134,6 +157,18 @@ function toClientCard(card: { id: string; suit: string; rank: number; isJoker?: 
   return { id: card.id, suit: card.suit, rank: card.rank, isJoker: !!card.isJoker };
 }
 
+/**
+ * ArraySchema(또는 다른 iterable)를 순수 배열로 안전하게 변환한다. 방 입장 직후(JOIN_ROOM
+ * 핸드셰이크 시점)엔 room.state가 스키마 "구조"만 알고 있을 뿐 실제 데이터(ROOM_STATE)는
+ * 아직 도착 전이라 community 같은 컬렉션 필드가 일시적으로 undefined일 수 있다 — 이때
+ * `[...undefined]`는 그대로 던진다. `Array.isArray`로 걸러내지 않는 이유는 @colyseus/schema의
+ * ArraySchema가 네이티브 Array를 상속하지 않아(Symbol.iterator만 구현) 정상적으로 채워진
+ * 인스턴스마저 false로 판정돼 데이터가 항상 비어버리기 때문 — 대신 null/undefined 여부만 본다.
+ */
+function toArray<T>(value: Iterable<T> | null | undefined): T[] {
+  return value ? [...value] : [];
+}
+
 function toClientPlayer(p: {
   sessionId: string;
   name: string;
@@ -147,9 +182,9 @@ function toClientPlayer(p: {
   connected: boolean;
   swapUsed: boolean;
   lastAction: string;
-  revealedHole: Iterable<{ id: string; suit: string; rank: number; isJoker?: boolean }>;
-  augmentIds: Iterable<string>;
-  augmentChoices: Iterable<string>;
+  revealedHole: Iterable<{ id: string; suit: string; rank: number; isJoker?: boolean }> | null | undefined;
+  augmentIds: Iterable<string> | null | undefined;
+  augmentChoices: Iterable<string> | null | undefined;
 }): ClientPlayer {
   return {
     sessionId: p.sessionId,
@@ -164,9 +199,9 @@ function toClientPlayer(p: {
     connected: p.connected,
     swapUsed: p.swapUsed,
     lastAction: p.lastAction,
-    revealedHole: [...p.revealedHole].map(toClientCard),
-    augmentIds: [...p.augmentIds],
-    augmentChoices: [...p.augmentChoices],
+    revealedHole: toArray(p.revealedHole).map(toClientCard),
+    augmentIds: toArray(p.augmentIds),
+    augmentChoices: toArray(p.augmentChoices),
   };
 }
 
@@ -184,8 +219,8 @@ function toClientGameState(state: {
   hostSessionId: string;
   dealerSeat: number;
   currentTurnSeat: number;
-  community: Iterable<{ id: string; suit: string; rank: number; isJoker?: boolean }>;
-  players: { values(): Iterable<Parameters<typeof toClientPlayer>[0]> };
+  community: Iterable<{ id: string; suit: string; rank: number; isJoker?: boolean }> | null | undefined;
+  players: { values(): Iterable<Parameters<typeof toClientPlayer>[0]> } | null | undefined;
 }): ClientGameState {
   return {
     phase: state.phase,
@@ -200,8 +235,8 @@ function toClientGameState(state: {
     hostSessionId: state.hostSessionId,
     dealerSeat: state.dealerSeat,
     currentTurnSeat: state.currentTurnSeat,
-    community: [...state.community].map(toClientCard),
-    players: [...state.players.values()].map(toClientPlayer).sort((a, b) => a.seatIndex - b.seatIndex),
+    community: toArray(state.community).map(toClientCard),
+    players: toArray(state.players?.values()).map(toClientPlayer).sort((a, b) => a.seatIndex - b.seatIndex),
   };
 }
 
@@ -220,6 +255,8 @@ export function useMultiplayerRoom(playerName: string) {
   const [pendingAugmentTarget, setPendingAugmentTarget] = useState<AugmentTargetRequest | null>(null);
   /** 음침한 눈으로 확인한 상대 카드 (나에게만 표시) */
   const [lastAugmentReveal, setLastAugmentReveal] = useState<AugmentRevealInfo | null>(null);
+  /** 카드가 바뀐 순간의 공개 브로드캐스트 — 매번 새 객체라 참조 변화만으로 연출 트리거에 충분하다 */
+  const [cardChangeEvent, setCardChangeEvent] = useState<CardChangeEvent | null>(null);
 
   // 최신 닉네임을 콜백 의존성 없이 읽기 위한 ref (닉네임 입력 중 재렌더링돼도 콜백 identity가 안정적으로 유지되도록)
   const playerNameRef = useRef(playerName);
@@ -274,13 +311,24 @@ export function useMultiplayerRoom(playerName: string) {
 
   // 게임 상태 실시간 구독 — phase/community/currentBet/currentTurnSeat/players 등
   // room.state가 바뀔 때마다(서버 브로드캐스트) 화면용 스냅샷으로 변환해 반영한다.
+  //
+  // client.create()/joinById()는 JOIN_ROOM 핸드셰이크(스키마 "구조"만 앎)가 끝나는 즉시
+  // resolve되고, 실제 상태 데이터(ROOM_STATE)는 그 뒤에 별도 웹소켓 메시지로 도착한다.
+  // room이 세팅된 시점에 room.state를 곧바로 변환하면 community 등 컬렉션 필드가 아직
+  // 채워지기 전이라 깨질 수 있다(로컬은 지연이 거의 없어 잘 안 보이지만, 실제 네트워크를
+  // 거쳐 접속하는 다른 기기에서는 이 창이 넓어져 재현된다). 그래서 이미 데이터가 와
+  // 있는 게 확인될 때만 즉시 반영하고, 아직이면 건너뛰어 최초 onStateChange(ROOM_STATE
+  // 처리 후 반드시 호출됨)가 실제 데이터를 들고 올 때까지 기다린다 — onStateChange는
+  // 재생(replay) 없는 단순 이벤트라, 여기서 무작정 매번 호출하면 이미 지나간 첫 갱신을
+  // 영영 놓쳐 로딩 화면에 멈출 수 있어서 그렇게 하지 않는다.
   useEffect(() => {
     if (!room) {
       setGameState(null);
       return;
     }
     const update = (state: unknown) => setGameState(toClientGameState(state as Parameters<typeof toClientGameState>[0]));
-    update(room.state);
+    const initialState = room.state as { community?: unknown } | undefined;
+    if (initialState?.community) update(initialState);
     room.onStateChange(update);
     return () => {
       room.onStateChange.remove(update);
@@ -356,6 +404,19 @@ export function useMultiplayerRoom(playerName: string) {
     if (gameState?.phase === 'augment_select') setLastAugmentReveal(null);
   }, [gameState?.phase]);
 
+  // 카드가 바뀌는 증강(카드 재구성/카멜레온/당근이세요?) 발동 — 전원에게 오는 공개 브로드캐스트.
+  // 소비 측(PokerTable)이 이 값이 바뀔 때마다 글로우 연출 + 토스트를 새로 재생한다.
+  useEffect(() => {
+    if (!room) {
+      setCardChangeEvent(null);
+      return;
+    }
+    const offCardChange = room.onMessage('cardChange', (payload: CardChangeEvent) => setCardChangeEvent(payload));
+    return () => {
+      offCardChange?.();
+    };
+  }, [room]);
+
   /** 서버가 뽑아 보낸 증강 후보 3개 중 하나를 선택해 전송 */
   const chooseAugment = useCallback(
     (augmentId: string) => {
@@ -388,6 +449,14 @@ export function useMultiplayerRoom(playerName: string) {
     [room],
   );
 
+  /** 카드 재구성 증강 — 내 홀카드 index(0|1)를 새 카드로 교체 요청 (핸드당 1회, 서버가 검증) */
+  const swapHoleCard = useCallback(
+    (index: 0 | 1) => {
+      room?.send('swapCard', { index });
+    },
+    [room],
+  );
+
   const myPlayer = useMemo(
     () => gameState?.players.find((p) => p.sessionId === room?.sessionId) ?? null,
     [gameState, room],
@@ -409,10 +478,12 @@ export function useMultiplayerRoom(playerName: string) {
     myAugmentChoices: myPlayer?.augmentChoices ?? [],
     chooseAugment,
     sendAction,
+    swapHoleCard,
     lastResult,
     gameOver,
     pendingAugmentTarget,
     chooseAugmentTarget,
     lastAugmentReveal,
+    cardChangeEvent,
   };
 }

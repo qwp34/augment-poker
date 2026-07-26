@@ -150,19 +150,33 @@ cp .env.example .env
 cp server/.env.example server/.env
 ```
 
-### 3. 실행 (터미널 2개)
+### 3. 실행
 
 ```bash
-# 터미널 1 — 클라이언트
-pnpm dev        # http://localhost:5173
+pnpm dev
+```
 
-# 터미널 2 — 서버 (멀티플레이 테스트 시에만 필요)
-cd server
-npm run dev     # ws://localhost:2567 (GET /health, /colyseus 모니터 포함)
+루트에서 `pnpm dev` 한 번이면 `concurrently`가 클라이언트(vite, `http://localhost:5173`)와
+서버(colyseus, `ws://localhost:2567`, GET /health·/colyseus 모니터 포함)를 동시에 띄우고
+`[client]`/`[server]` 접두사로 로그를 구분해 보여준다. 터미널 하나만 있으면 된다.
+
+싱글플레이(AI 봇전)만 테스트할 땐 서버가 필요 없으니 클라이언트만 따로 켜도 된다:
+
+```bash
+pnpm dev:client   # 클라이언트만 — http://localhost:5173
+pnpm dev:server   # 서버만 — ws://localhost:2567
 ```
 
 > 싱글플레이(AI 봇전)는 서버 없이 클라이언트만으로 완전히 동작합니다. 서버는 "친구와 함께
-> 플레이"(멀티플레이)를 테스트할 때만 켜면 됩니다.
+> 플레이"(멀티플레이)를 테스트할 때만 필요합니다.
+
+> **같은 Wi-Fi(LAN)의 다른 기기(휴대폰 등)에서 접속하기**: `vite`가 `server.host: true`로
+> 설정되어 있어 `pnpm dev` 실행 시 터미널에 `Network: http://<PC의 LAN IP>:5173` 형태로
+> URL이 함께 출력된다 — 그 주소로 접속하면 된다. `VITE_SERVER_URL`을 `.env`에 따로 설정하지
+> 않았다면 클라이언트는 페이지를 연 호스트명을 그대로 재사용해 자동으로 같은 PC의
+> `:2567`(서버) 포트로 붙는다. 서버(`npm run dev`)도 호스트명 없이 `listen`하므로 기본적으로
+> 모든 인터페이스에 바인딩된다 — 그래도 연결이 안 되면 Windows 방화벽이 5173/2567 포트의
+> 인바운드 연결을 막고 있는지 확인한다.
 
 ### 기타 명령어
 

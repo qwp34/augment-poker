@@ -8,9 +8,9 @@ import { WinBanner } from './components/WinBanner';
 import { TopBar } from './components/TopBar';
 import { LogPanel } from './components/LogPanel';
 import { MultiplayerLobby } from './components/MultiplayerLobby';
-import { TitleMarquee } from './components/TitleMarquee';
-import { TitleBackdrop } from './components/TitleBackdrop';
-import { ChipRing } from './components/ChipRing';
+import { TitleSplash } from './components/TitleSplash';
+import { MenuStage } from './components/MenuStage';
+import { ChipButton } from './components/ChipButton';
 import { findByEffect } from './engine/augmentEngine';
 import { evaluateBest } from './engine/handEvaluator';
 import { handLabel } from './ui/format';
@@ -20,6 +20,8 @@ import { getRoomIdFromPath } from './net/colyseusClient';
 import './App.css';
 
 export default function App() {
+  // 1단계(타이틀 스플래시) / 2단계(게임 시작·멀티플레이 메뉴) 전환 상태
+  const [stage, setStage] = useState<'title' | 'menu'>('title');
   const [started, setStarted] = useState(false);
   // 공유 링크(/room/:roomId)로 들어온 경우 곧바로 멀티플레이 로비를 연다
   const [multiplayerOpen, setMultiplayerOpen] = useState(() => !!getRoomIdFromPath());
@@ -67,6 +69,16 @@ export default function App() {
   const playerWon = outcome?.winner === 'player';
   const showResult = phase === 'roundResult';
 
+  // 족보를 구성하는 카드 5장 하이라이트 — 진행 중엔 실시간 최고 족보, 결과 화면에선 실제 판정 결과를 사용
+  const playerBestFiveIds = useMemo(() => {
+    const hand = showResult ? outcome?.playerHand : liveHand;
+    return hand ? new Set(hand.bestFive.map((c) => c.id)) : null;
+  }, [showResult, outcome?.playerHand, liveHand]);
+  const botBestFiveIds = useMemo(() => {
+    if (!showResult || !outcome?.botHand) return null;
+    return new Set(outcome.botHand.bestFive.map((c) => c.id));
+  }, [showResult, outcome?.botHand]);
+
   const closeMultiplayer = () => {
     window.history.pushState(null, '', '/');
     setMultiplayerOpen(false);
@@ -77,52 +89,62 @@ export default function App() {
     return <MultiplayerLobby onClose={closeMultiplayer} />;
   }
 
-  // ── 타이틀 화면 ──
-  if (!started) {
+  // ── 1단계(타이틀 스플래시) / 2단계(게임 시작·멀티플레이 메뉴) — 0.55초 페이드 전환 ──
+  if (stage === 'title' || !started) {
     return (
-      <div className="screen title-screen title-screen-neon">
-        <TitleBackdrop />
-        <div className="scanlines" />
-        <TitleMarquee />
-        <div className="chip-btn-row">
-          <motion.button
-            className="chip-btn chip-btn-gold"
-            initial={{ scale: 0.8, opacity: 0 }}
-            animate={{ scale: 1, opacity: 1 }}
-            transition={{ delay: 0.5, type: 'spring', stiffness: 260 }}
-            onClick={() => {
-              sfx.click();
-              startGame();
-              setStarted(true);
-            }}
+      <AnimatePresence>
+        {stage === 'title' ? (
+          <motion.div
+            key="title"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.55 }}
           >
-            <span className="chip-btn-side" aria-hidden="true" />
-            <ChipRing />
-            <span className="chip-btn-inner">
-              <span className="chip-btn-title">게임 시작</span>
-              <span className="chip-btn-subtitle-pill">
-                <span className="chip-btn-subtitle">혼자서 플레이</span>
-              </span>
-            </span>
-          </motion.button>
-          <motion.button
-            className="chip-btn chip-btn-teal"
-            initial={{ scale: 0.8, opacity: 0 }}
-            animate={{ scale: 1, opacity: 1 }}
-            transition={{ delay: 0.65, type: 'spring', stiffness: 260 }}
-            onClick={() => setMultiplayerOpen(true)}
+            <TitleSplash
+              onEnter={() => {
+                sfx.click();
+                setStage('menu');
+              }}
+            />
+          </motion.div>
+        ) : (
+          <motion.div
+            key="menu"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.55 }}
           >
-            <span className="chip-btn-side" aria-hidden="true" />
-            <ChipRing />
-            <span className="chip-btn-inner">
-              <span className="chip-btn-title">멀티플레이</span>
-              <span className="chip-btn-subtitle-pill">
-                <span className="chip-btn-subtitle">친구와 함께</span>
-              </span>
-            </span>
-          </motion.button>
-        </div>
-      </div>
+            <button
+              type="button"
+              className="back-to-title-btn"
+              onClick={() => {
+                sfx.click();
+                setStage('title');
+              }}
+            >
+              ← 타이틀로 돌아가기
+            </button>
+            <MenuStage>
+              <ChipButton
+                title="게임 시작"
+                subtitle="혼자서 플레이"
+                onClick={() => {
+                  sfx.click();
+                  startGame();
+                  setStarted(true);
+                }}
+              />
+              <ChipButton
+                title="멀티플레이"
+                subtitle="친구와 함께"
+                onClick={() => setMultiplayerOpen(true)}
+              />
+            </MenuStage>
+          </motion.div>
+        )}
+      </AnimatePresence>
     );
   }
 
@@ -194,7 +216,13 @@ export default function App() {
           <div className="seat-cards">
             <div className="card-row">
               {botHole.map((c, i) => (
-                <Card key={c.id} card={c} hidden={phase === 'betting'} dealDelay={0.1 + i * 0.12} />
+                <Card
+                  key={c.id}
+                  card={c}
+                  hidden={phase === 'betting'}
+                  dealDelay={0.1 + i * 0.12}
+                  highlight={!!botBestFiveIds?.has(c.id)}
+                />
               ))}
             </div>
             {showResult && outcome?.botHand && !outcome.byFold && (
@@ -218,7 +246,12 @@ export default function App() {
           </div>
           <div className="card-row board-cards">
             {community.map((c, i) => (
-              <Card key={c.id} card={c} dealDelay={i >= community.length - 3 ? (i % 3) * 0.15 : 0} />
+              <Card
+                key={c.id}
+                card={c}
+                dealDelay={i >= community.length - 3 ? (i % 3) * 0.15 : 0}
+                highlight={!!(playerBestFiveIds?.has(c.id) || botBestFiveIds?.has(c.id))}
+              />
             ))}
             {Array.from({ length: 5 - community.length }).map((_, i) => (
               <Card key={`ph-${i}`} />
@@ -243,6 +276,7 @@ export default function App() {
                   dealDelay={0.25 + i * 0.12}
                   clickable={canSwap}
                   onClick={canSwap ? () => swapHoleCard(i) : undefined}
+                  highlight={!!playerBestFiveIds?.has(c.id)}
                 />
               ))}
               <AnimatePresence>

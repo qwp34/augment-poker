@@ -7,7 +7,9 @@ import {
   applyEditCard,
   swapCards,
   revealCard,
-  isInstantAugment,
+  needsTargetSelection,
+  isOneShotAugment,
+  collectHandStartTargetQueue,
   type Augment,
   type ShowdownContext,
 } from './augmentEngine';
@@ -27,10 +29,11 @@ const allinSnipe = byId('aug_allin_snipe'); // on_showdown, isAllIn:true, x2
 const goldenFlip = byId('aug_golden_flip'); // on_round_start — 쇼다운 배당과 무관
 const royalProphecy = byId('aug_royal_prophecy'); // on_shuffle — 쇼다운 배당과 무관
 
-// 이번에 추가한 즉시형(on_pick) 증강 3종
-const sinisterEye = byId('aug_sinister_eye'); // 음침한 눈 — reveal_opponent_card
-const chameleon = byId('aug_chameleon'); // 카멜레온 — edit_own_card
-const carrot = byId('aug_carrot'); // 당근이세요? — swap_with_opponent
+// 대상 지정이 필요한 증강 3종 — 음침한 눈/당근이세요?는 매 핸드 재발동(on_hand_start),
+// 카멜레온만 유일하게 최초 1회만 발동하고 소모되는 예외(on_pick)
+const sinisterEye = byId('aug_sinister_eye'); // 음침한 눈 — reveal_opponent_card, on_hand_start
+const chameleon = byId('aug_chameleon'); // 카멜레온 — edit_own_card, on_pick(일회성)
+const carrot = byId('aug_carrot'); // 당근이세요? — swap_with_opponent, on_hand_start
 
 function card(suit: Card['suit'], rank: Card['rank'], id = `${suit}-${rank}`): Card {
   return { id, suit, rank };
@@ -101,16 +104,61 @@ describe('applyPayoutAugments — 쇼다운 배당 배율 적용', () => {
   });
 });
 
-describe('isInstantAugment — 즉시형(on_pick) 증강 판별', () => {
-  it('음침한 눈/카멜레온/당근이세요?는 즉시형이다', () => {
-    assert.equal(isInstantAugment(sinisterEye), true);
-    assert.equal(isInstantAugment(chameleon), true);
-    assert.equal(isInstantAugment(carrot), true);
+describe('needsTargetSelection — 대상 지정형 증강 판별', () => {
+  it('음침한 눈/카멜레온/당근이세요?는 대상 지정이 필요하다', () => {
+    assert.equal(needsTargetSelection(sinisterEye), true);
+    assert.equal(needsTargetSelection(chameleon), true);
+    assert.equal(needsTargetSelection(carrot), true);
   });
 
-  it('기존 5종은 즉시형이 아니다', () => {
+  it('기존 5종은 대상 지정이 필요 없다', () => {
     for (const a of [flushBoost, cardSwap, allinSnipe, goldenFlip, royalProphecy]) {
-      assert.equal(isInstantAugment(a), false, `${a.name}은 즉시형이 아니어야 함`);
+      assert.equal(needsTargetSelection(a), false, `${a.name}은 대상 지정형이 아니어야 함`);
+    }
+  });
+});
+
+describe('collectHandStartTargetQueue — 매 핸드 재발동 큐 구성', () => {
+  it('대상 지정이 필요한 증강만, 주어진 순서(획득 순서) 그대로 뽑는다', () => {
+    const queue = collectHandStartTargetQueue([carrot, flushBoost, chameleon, cardSwap, sinisterEye]);
+    assert.deepEqual(queue, [carrot, chameleon, sinisterEye]);
+  });
+
+  it('대상 지정형 증강이 없으면 빈 큐를 반환한다', () => {
+    assert.deepEqual(collectHandStartTargetQueue([flushBoost, cardSwap, goldenFlip]), []);
+  });
+
+  it('같은 보유 목록이라도 획득 순서가 다르면 큐의 순서도 그에 따라 달라진다', () => {
+    const queueA = collectHandStartTargetQueue([sinisterEye, carrot]);
+    const queueB = collectHandStartTargetQueue([carrot, sinisterEye]);
+    assert.deepEqual(queueA, [sinisterEye, carrot]);
+    assert.deepEqual(queueB, [carrot, sinisterEye]);
+  });
+
+  it('카멜레온(일회성)이 아직 소모되지 않았으면 다른 대상 지정형 증강과 함께 큐에 포함된다', () => {
+    const queue = collectHandStartTargetQueue([chameleon, sinisterEye, carrot]);
+    assert.deepEqual(queue, [chameleon, sinisterEye, carrot]);
+  });
+
+  it('카멜레온이 이미 소모된(usedOneShotIds) 뒤에는 큐에서 제외되지만, 나머지 재발동형은 그대로 남는다', () => {
+    const queue = collectHandStartTargetQueue([chameleon, sinisterEye, carrot], [chameleon.id]);
+    assert.deepEqual(queue, [sinisterEye, carrot]);
+  });
+
+  it('usedOneShotIds에 재발동형 증강의 id가 우연히 들어있어도(원래 그럴 일은 없지만) 영향받지 않는다', () => {
+    const queue = collectHandStartTargetQueue([sinisterEye, carrot], [sinisterEye.id, carrot.id]);
+    assert.deepEqual(queue, [sinisterEye, carrot]);
+  });
+});
+
+describe('isOneShotAugment — 일회성(on_pick) 증강 판별', () => {
+  it('카멜레온만 일회성이다', () => {
+    assert.equal(isOneShotAugment(chameleon), true);
+  });
+
+  it('음침한 눈/당근이세요?를 포함한 나머지는 일회성이 아니다(매 핸드 재발동)', () => {
+    for (const a of [flushBoost, cardSwap, allinSnipe, goldenFlip, royalProphecy, sinisterEye, carrot]) {
+      assert.equal(isOneShotAugment(a), false, `${a.name}은 일회성이 아니어야 함`);
     }
   });
 });
