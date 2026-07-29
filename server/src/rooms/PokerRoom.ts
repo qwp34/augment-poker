@@ -122,6 +122,7 @@ export class PokerRoom extends Room<PokerState> {
     this.onMessage('chooseAugmentTarget', (client, message: AugmentTargetMessage) =>
       this.handleAugmentTarget(client, message),
     );
+    this.onMessage('skipAugmentTarget', (client) => this.handleSkipAugmentTarget(client));
     this.onMessage('swapCard', (client, message: { index?: unknown }) =>
       this.handleSwapCard(client, message),
     );
@@ -487,6 +488,18 @@ export class PokerRoom extends Room<PokerState> {
     const ok = this.applyInstantAugmentEffect(p, augment, message);
     if (!ok) return this.reject(client, '증강 대상 지정이 올바르지 않습니다');
     this.markOneShotUsed(p, augment);
+    this.advanceTargetQueueFor(p);
+  }
+
+  /**
+   * 지금 대상 지정을 띄우고 있는 증강(음침한 눈/카멜레온/당근이세요?)을 이번 핸드엔
+   * 사용하지 않고 넘어간다. markOneShotUsed를 호출하지 않으므로, 일회성(카멜레온) 증강을
+   * 스킵해도 "아직 한 번도 안 썼다"는 상태 그대로 유지되어 다음 핸드에 다시 재발동된다.
+   */
+  private handleSkipAugmentTarget(client: Client) {
+    if (this.state.phase !== 'augment_target') return;
+    const p = this.state.players.get(client.sessionId);
+    if (!p || !p.pendingTargetAugment) return;
     this.advanceTargetQueueFor(p);
   }
 

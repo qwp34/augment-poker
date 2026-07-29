@@ -1551,6 +1551,27 @@
   color: var(--prismatic);
 }
 
+/* 클릭 가능한 증강 칩(좌석 뱃지) — <button>이라 기본 스타일을 지우고 나머지는 .augment-chip과 동일 */
+.augment-chip-btn {
+  font-family: inherit;
+  cursor: pointer;
+  transition: transform 0.12s, box-shadow 0.12s;
+}
+
+.augment-chip-btn:hover {
+  transform: translateY(-2px);
+}
+
+.augment-chip-btn.rarity-silver:hover {
+  box-shadow: 0 0 10px rgba(184, 196, 204, 0.5);
+}
+.augment-chip-btn.rarity-gold:hover {
+  box-shadow: 0 0 10px rgba(245, 197, 66, 0.55);
+}
+.augment-chip-btn.rarity-prismatic:hover {
+  box-shadow: 0 0 10px rgba(176, 110, 245, 0.6);
+}
+
 /* ═══ 멀티플레이 인게임 화면 ═══ */
 
 /* ── 증강 선택 (LoL 아레나 스타일 — 설명은 항상 표시, 호버는 시각적 강조만) ── */
@@ -1773,11 +1794,22 @@
 }
 
 /* 홀카드 오른쪽에 보유 증강을 나란히 배치 — 보드(중앙 커뮤니티 카드)와 절대 겹치지 않도록
-   이 줄 전체의 폭/높이를 고정하고, 증강 개수가 늘어나면 오른쪽 열만 세로 스크롤한다. */
+   이 줄 전체의 폭/높이를 고정하고, 증강 개수가 늘어나면 오른쪽 열만 세로 스크롤한다.
+   align-items를 flex-end로 둬서 증강 칩 열의 아래쪽이 카드 줄(=카드-닉네임 열의 맨 아래)과
+   맞춰지도록 한다. */
 .mp-seat-body {
   display: flex;
-  align-items: flex-start;
+  align-items: flex-end;
   gap: 10px;
+}
+
+/* 닉네임 박스 + 홀카드 2장을 한 열로 묶어, 닉네임이 항상 그 카드 2장의 정중앙 위쪽에 오도록
+   한다 — 증강 칩 열은 이 바깥(형제 요소)에 있어 닉네임 폭 계산에 영향을 주지 않는다. */
+.mp-seat-cards-col {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
 }
 
 .mp-seat-augments {
@@ -1868,29 +1900,31 @@
   text-align: center;
 }
 
-/* ── 카드 변경 알림 토스트 (테이블 상단 중앙에 잠깐 떴다 사라짐) ── */
+/* ── 카드 변경 알림 토스트 (카드 교체/재구성 — 화면 중앙 상단에서 확실히 눈에 띄게) ── */
 .mp-cardchange-toast-stack {
   position: absolute;
-  top: 46px;
+  top: 8%;
   left: 50%;
   transform: translateX(-50%);
-  z-index: 5;
+  z-index: 20;
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 6px;
+  gap: 10px;
   pointer-events: none;
 }
 
 .mp-cardchange-toast {
-  background: rgba(10, 28, 34, 0.92);
-  border: 1px solid var(--gold);
+  background: rgba(8, 20, 24, 0.95);
+  backdrop-filter: blur(4px);
+  border: 2px solid var(--gold);
   color: var(--gold);
-  font-size: 0.85rem;
-  font-weight: 700;
-  padding: 6px 16px;
-  border-radius: 20px;
-  box-shadow: 0 0 16px rgba(245, 197, 66, 0.4);
+  font-size: 1.35rem;
+  font-weight: 800;
+  padding: 14px 30px;
+  border-radius: 16px;
+  box-shadow: 0 0 28px rgba(245, 197, 66, 0.55), 0 10px 24px rgba(0, 0, 0, 0.5);
+  text-shadow: 0 0 12px rgba(245, 197, 66, 0.5);
   white-space: nowrap;
 }
 
@@ -1929,56 +1963,51 @@
   animation: blink 1s ease-in-out infinite alternate;
 }
 
-/* ── 우측 정보 패널: 채팅 / 족보 / 내기록 탭 ── */
+/* ── 족보 패널 — 화면 바깥이 아니라 테이블 내부, "우측 상단 좌석"(마름모 배치의
+   .mp-diamond-right, 내 시점 기준 상대적으로 배정되는 자리 — 특정 플레이어 컴포넌트가
+   아니라 .mp-table-area 좌표계 기준으로 고정) 정보 박스 바로 아래에 도킹한다.
+   .mp-diamond-right는 top:50% + translateY(-50%)로 테이블 세로 중앙에 오고, 좌석 전체
+   높이(정보 박스 + 카드 + 보유 증강 칸)는 증강 개수와 무관하게 대략 320px를 넘지 않으므로
+   (증강 칸은 max-height:140px로 스크롤 처리됨), 세로 중앙보다 좀 더 아래(top: 660px)에
+   두면 그 좌석 바로 아래에서 시작하고, 우측 정렬(right: 14px)로 좌석과 가로로 겹친다.
+   10개 족보 항목은 이 작은 박스 안에서 세로 스크롤로 확인한다.
+   평소엔 배경을 아주 투명하게(불투명도 10%) 낮춰 거의 안 보이게 두다가, 내 최고 족보가
+   스트레이트 이상이 되는 순간 완전히 또렷해진다(.mp-info-panel-focused). */
 .mp-info-panel {
-  width: 260px;
-  flex-shrink: 0;
+  position: absolute;
+  top: 660px;
+  right: 14px;
+  z-index: 4;
+  width: 210px;
+  height: 230px;
   display: flex;
   flex-direction: column;
   background: rgba(6, 16, 14, 0.88);
   border: 1px solid #1f5c46;
   border-radius: 14px;
   overflow: hidden;
+  opacity: 0.1;
+  transition: opacity 0.4s ease;
 }
 
-.mp-info-tabs {
-  display: flex;
-  border-bottom: 1px solid #1f5c46;
+.mp-info-panel-focused {
+  opacity: 1;
 }
 
-.mp-info-tab-btn {
-  flex: 1;
+.mp-info-header {
   padding: 11px 4px;
-  background: transparent;
-  border: none;
-  border-bottom: 2px solid transparent;
-  color: var(--text-dim);
-  font-size: 0.85rem;
-  font-weight: 700;
-  cursor: pointer;
-  transition: color 0.15s, border-color 0.15s;
-}
-
-.mp-info-tab-btn:hover {
-  color: var(--text);
-}
-
-.mp-info-tab-active {
+  text-align: center;
+  border-bottom: 1px solid #1f5c46;
   color: var(--gold);
-  border-bottom-color: var(--gold);
+  font-size: 0.9rem;
+  font-weight: 800;
+  letter-spacing: 2px;
 }
 
 .mp-info-content {
   flex: 1;
   overflow-y: auto;
   padding: 14px;
-}
-
-.mp-info-placeholder {
-  color: var(--text-dim);
-  font-size: 0.85rem;
-  text-align: center;
-  margin-top: 24px;
 }
 
 /* 족보 탭 — 내 홀카드+공개된 커뮤니티 카드 기준 실시간 계산, 현재 최고 족보 강조 */
@@ -2029,6 +2058,7 @@
 }
 
 .mp-target-modal {
+  position: relative;
   width: min(420px, 90vw);
   background: linear-gradient(170deg, #10241c, #081511);
   border: 2px solid var(--gold);
@@ -2036,6 +2066,26 @@
   padding: 26px 28px;
   text-align: center;
   box-shadow: 0 0 40px rgba(245, 197, 66, 0.3), 0 20px 50px rgba(0, 0, 0, 0.6);
+}
+
+/* 우상단 ✕ — 지금 단계와 무관하게 이 증강을 이번 핸드엔 사용하지 않고 넘어간다 */
+.mp-target-skip {
+  position: absolute;
+  top: 14px;
+  right: 14px;
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  border: 1px solid var(--text-dim);
+  background: rgba(0, 0, 0, 0.25);
+  color: var(--text-dim);
+  font-size: 0.95rem;
+  transition: border-color 0.15s, color 0.15s;
+}
+
+.mp-target-skip:hover {
+  border-color: #ff8a8a;
+  color: #ff8a8a;
 }
 
 .mp-target-modal.rarity-silver {
@@ -2194,6 +2244,87 @@
   cursor: not-allowed;
 }
 
+/* ── 증강 뱃지 클릭 시 이름/효과 설명 팝업 — 바깥(배경) 클릭하면 닫힌다 ── */
+.mp-augment-popup-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(4, 12, 10, 0.6);
+  backdrop-filter: blur(2px);
+}
+
+.mp-augment-popup {
+  width: min(340px, 88vw);
+  background: linear-gradient(170deg, #14303a, #0c1e26);
+  border: 2px solid var(--text-dim);
+  border-radius: 16px;
+  padding: 22px 24px;
+  text-align: center;
+  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.6);
+}
+
+.mp-augment-popup.rarity-silver {
+  border-color: var(--silver);
+}
+.mp-augment-popup.rarity-gold {
+  border-color: var(--gold);
+}
+.mp-augment-popup.rarity-prismatic {
+  border-color: var(--prismatic);
+  background: linear-gradient(170deg, #22143a, #14303a);
+}
+
+.mp-augment-popup-rarity {
+  display: inline-block;
+  font-size: 0.72rem;
+  font-weight: 800;
+  letter-spacing: 3px;
+  text-transform: uppercase;
+  margin-bottom: 6px;
+}
+
+.rarity-silver .mp-augment-popup-rarity {
+  color: var(--silver);
+}
+.rarity-gold .mp-augment-popup-rarity {
+  color: var(--gold);
+}
+.rarity-prismatic .mp-augment-popup-rarity {
+  color: var(--prismatic);
+}
+
+.mp-augment-popup-name {
+  font-size: 1.25rem;
+  color: #f0f6f8;
+  margin-bottom: 10px;
+}
+
+.mp-augment-popup-desc {
+  font-size: 0.9rem;
+  color: var(--text-dim);
+  line-height: 1.55;
+}
+
+.mp-augment-popup-close {
+  margin-top: 18px;
+  width: 100%;
+  padding: 10px 0;
+  border-radius: 10px;
+  border: 1px solid var(--text-dim);
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--text);
+  font-weight: 700;
+  transition: border-color 0.15s, color 0.15s;
+}
+
+.mp-augment-popup-close:hover {
+  border-color: var(--gold);
+  color: var(--gold);
+}
+
 /* ── 음침한 눈 — 상대 좌석에서 공개된 카드 표시 (나에게만 보임) ── */
 .mp-revealed-card {
   position: relative;
@@ -2256,13 +2387,29 @@
   font-size: 1.1rem;
 }
 
-/* 족보 이름 — 승자 이름과 배당 사이, 절대 놓칠 수 없게 크고 굵게 강조 */
+/* 족보 이름 — 승자 이름과 배당 사이, 절대 놓칠 수 없게 크고 굵게 강조 + 등장 시 살짝 확대되며 팝 */
 .mp-result-category {
-  font-size: 1.6rem;
+  font-size: 2.4rem;
   font-weight: 900;
   color: var(--gold);
   letter-spacing: 1px;
-  text-shadow: 0 0 16px rgba(245, 197, 66, 0.6);
+  text-shadow: 0 0 20px rgba(245, 197, 66, 0.7);
+  animation: mp-category-pop 0.45s cubic-bezier(0.2, 1.4, 0.4, 1) both;
+}
+
+@keyframes mp-category-pop {
+  0% {
+    opacity: 0;
+    transform: scale(0.4);
+  }
+  60% {
+    opacity: 1;
+    transform: scale(1.15);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
 }
 
 .mp-result-payout-row {

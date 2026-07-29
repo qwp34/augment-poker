@@ -441,6 +441,14 @@ export function useMultiplayerRoom(playerName: string) {
     [room],
   );
 
+  /** 이미 보유한 즉시형 증강(음침한 눈/카멜레온/당근이세요?)이 이번 핸드 재발동될 때, 이번엔
+   * 사용하지 않고 넘어간다 — 일회성 증강이어도 "사용한 것"으로 처리되지 않아 다음 핸드에
+   * 다시 재발동될 수 있다. */
+  const skipAugmentTarget = useCallback(() => {
+    room?.send('skipAugmentTarget');
+    setPendingAugmentTarget(null);
+  }, [room]);
+
   /** 베팅 액션(폴드/체크/콜/레이즈/올인) 전송 — 금액 검증은 서버가 최종 수행한다 */
   const sendAction = useCallback(
     (type: BettingActionType, amount?: number) => {
@@ -483,6 +491,7 @@ export function useMultiplayerRoom(playerName: string) {
     gameOver,
     pendingAugmentTarget,
     chooseAugmentTarget,
+    skipAugmentTarget,
     lastAugmentReveal,
     cardChangeEvent,
   };

@@ -8,7 +8,6 @@ import { RANKS, SUITS, SUIT_SYMBOLS, rankLabel } from '../engine/types';
 import type { AugmentTargetRequest, ClientCard } from '../net/useMultiplayerRoom';
 
 const AUGMENT_POOL = augmentsData as Augment[];
-const CARD_BACK: ClientCard = { id: 'back', suit: 'spades', rank: 2, isJoker: false };
 
 function findAugment(id: string): Augment | undefined {
   return AUGMENT_POOL.find((a) => a.id === id);
@@ -31,19 +30,23 @@ interface AugmentTargetScreenProps {
   request: AugmentTargetRequest;
   myHole: ClientCard[];
   onSubmit: (payload: AugmentTargetPayload) => void;
+  /** 이미 보유한 이 증강을 이번 핸드엔 사용하지 않고 넘어간다(다음 핸드에 다시 재발동될 수 있음) */
+  onSkip: () => void;
 }
 
 type Step = 'opponent' | 'targetCard' | 'ownCard' | 'rank' | 'suit';
 
 /**
- * 즉시형 증강(음침한 눈/카멜레온/당근이세요?)의 대상 지정 모달.
+ * 즉시형 증강(음침한 눈/카멜레온/당근이세요?)의 대상 지정 모달 — 이미 보유한 증강이 매 핸드
+ * 재발동될 때 뜬다. 우상단 ✕를 누르면 지금 진행 중인 단계와 무관하게 이번 핸드는 이 증강을
+ * 사용하지 않고 넘어간다.
  *
  * 단계마다 "먼저 골라서 하이라이트만 표시 → 확인 버튼을 눌러야 다음 단계로 진행"하는
  * 방식이다. 예전엔 옵션을 클릭하는 즉시 확정 + 다음 단계로 넘어가서, 뭘 골랐는지
  * 인지하기도 전에 화면이 휙휙 지나가 버리는 문제가 있었다 — 확인 단계를 하나 끼워 넣어
  * "지금 내가 선택해야 하는 타이밍"임을 명확히 인지하고 실수로 잘못 고르지 않게 한다.
  */
-export function AugmentTargetScreen({ request, myHole, onSubmit }: AugmentTargetScreenProps) {
+export function AugmentTargetScreen({ request, myHole, onSubmit, onSkip }: AugmentTargetScreenProps) {
   const augment = findAugment(request.augmentId);
   const { effectType, opponents } = request;
 
@@ -136,6 +139,15 @@ export function AugmentTargetScreen({ request, myHole, onSubmit }: AugmentTarget
           animate={{ scale: 1, opacity: 1, y: 0 }}
           transition={{ type: 'spring', stiffness: 260, damping: 22 }}
         >
+          <button
+            type="button"
+            className="mp-target-skip"
+            aria-label="이 증강 사용하지 않기"
+            title="이번 핸드엔 사용 안 함"
+            onClick={onSkip}
+          >
+            ✕
+          </button>
           <h2 className="mp-target-title">{augment.name}</h2>
           <p className="mp-target-desc">{augment.description}</p>
           <p className="mp-target-hint">{stepHint[step]}</p>
@@ -162,7 +174,7 @@ export function AugmentTargetScreen({ request, myHole, onSubmit }: AugmentTarget
                   className={`mp-target-card-btn${draft === idx ? ' mp-target-selected' : ''}`}
                   onClick={() => setDraft(idx)}
                 >
-                  <Card card={asEngineCard(CARD_BACK)} hidden size="sm" />
+                  <Card hidden size="sm" />
                   <span>{idx === 0 ? '첫 번째 카드' : '두 번째 카드'}</span>
                 </button>
               ))}

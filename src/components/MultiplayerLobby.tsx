@@ -27,6 +27,7 @@ export function MultiplayerLobby({ onClose }: { onClose: () => void }) {
     gameOver,
     pendingAugmentTarget,
     chooseAugmentTarget,
+    skipAugmentTarget,
     lastAugmentReveal,
     cardChangeEvent,
   } = useMultiplayerRoom(name);
@@ -52,6 +53,21 @@ export function MultiplayerLobby({ onClose }: { onClose: () => void }) {
   const playerCount = gameState?.players.length ?? 0;
   const isHost = !!room && !!gameState && room.sessionId === gameState.hostSessionId;
 
+  // augment_select phase에 막 들어서면 곧바로 선택 UI를 덮어씌우지 않고, 약 3초간 직전
+  // 핸드/테이블을 그대로 보여준 뒤(증강 선택 UI 없이) 선택 화면을 띄운다.
+  const [augmentUiReady, setAugmentUiReady] = useState(false);
+  useEffect(() => {
+    if (phase !== 'augment_select') {
+      setAugmentUiReady(false);
+      return;
+    }
+    const t = setTimeout(() => setAugmentUiReady(true), 3000);
+    return () => clearTimeout(t);
+  }, [phase]);
+
+  const showAugmentScreen = phase === 'augment_select' && augmentUiReady;
+  const showTable = phase !== 'waiting' && phase !== 'gameOver' && !showAugmentScreen;
+
   const handleStartGame = () => {
     setActionError('');
     room?.send('startGame');
@@ -73,7 +89,7 @@ export function MultiplayerLobby({ onClose }: { onClose: () => void }) {
         ✕
       </button>
 
-      {status === 'connected' && room && gameState && phase === 'augment_select' && (
+      {status === 'connected' && room && gameState && showAugmentScreen && (
         <AugmentSelectScreen round={gameState.round} choices={myAugmentChoices} onSelect={chooseAugment} />
       )}
 
@@ -107,23 +123,18 @@ export function MultiplayerLobby({ onClose }: { onClose: () => void }) {
         </div>
       )}
 
-      {status === 'connected' &&
-        room &&
-        gameState &&
-        phase !== 'waiting' &&
-        phase !== 'augment_select' &&
-        phase !== 'gameOver' && (
-          <PokerTable
-            gameState={gameState}
-            myHole={myHole}
-            mySessionId={room.sessionId}
-            lastResult={lastResult}
-            augmentReveal={lastAugmentReveal}
-            cardChangeEvent={cardChangeEvent}
-            onAction={sendAction}
-            onSwapCard={swapHoleCard}
-          />
-        )}
+      {status === 'connected' && room && gameState && showTable && (
+        <PokerTable
+          gameState={gameState}
+          myHole={myHole}
+          mySessionId={room.sessionId}
+          lastResult={lastResult}
+          augmentReveal={lastAugmentReveal}
+          cardChangeEvent={cardChangeEvent}
+          onAction={sendAction}
+          onSwapCard={swapHoleCard}
+        />
+      )}
 
       {(status !== 'connected' || phase === 'waiting') && (
         <div className="screen title-screen mp-lobby">
@@ -205,7 +216,12 @@ export function MultiplayerLobby({ onClose }: { onClose: () => void }) {
       {/* 즉시형 증강(음침한 눈/카멜레온/당근이세요?) 대상 지정 — 없으면 15초 자동 타임아웃까지
           화면이 멈춘 것처럼 보인다. 어느 화면 위에 있든 최상단 모달로 띄운다. */}
       {pendingAugmentTarget && (
-        <AugmentTargetScreen request={pendingAugmentTarget} myHole={myHole} onSubmit={chooseAugmentTarget} />
+        <AugmentTargetScreen
+          request={pendingAugmentTarget}
+          myHole={myHole}
+          onSubmit={chooseAugmentTarget}
+          onSkip={skipAugmentTarget}
+        />
       )}
 
       {actionError && <div className="mp-toast-error">{actionError}</div>}

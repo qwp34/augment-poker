@@ -3,7 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { Card } from './Card';
 import { AugmentCard } from './AugmentCard';
 import augmentsData from '../data/augments.json';
-import type { Augment } from '../engine/augmentEngine';
+import { RARITY_NAMES_KO, type Augment } from '../engine/augmentEngine';
 import { evaluateBest, CATEGORY_NAMES_KO, type HandCategory } from '../engine/handEvaluator';
 import type { Card as EngineCard } from '../engine/types';
 import { CATEGORY_SHORT_KO } from '../ui/format';
@@ -20,8 +20,6 @@ import type {
 
 const AUGMENT_POOL = augmentsData as Augment[];
 const BETTING_PHASES = new Set(['preflop', 'flop', 'turn', 'river']);
-/** 뒷면 카드 연출용 — suit/rank 값은 화면에 노출되지 않는다(뒤집힌 상태로만 렌더) */
-const CARD_BACK: ClientCard = { id: 'back', suit: 'spades', rank: 2, isJoker: false };
 /** 하이카드 ~ 로열스트레이트플러시, 오름차순(handEvaluator의 내부 랭킹과 동일한 순서) */
 const HAND_CATEGORY_ORDER: HandCategory[] = [
   'high_card',
@@ -103,6 +101,8 @@ interface DiamondSeatProps {
   canSwap: boolean;
   /** 카드 재구성 — 내 홀카드 index(0|1)를 새 카드로 교체 요청 (isMe 좌석에서만 의미 있음) */
   onSwapCard: (index: 0 | 1) => void;
+  /** 증강 뱃지를 클릭했을 때 — 이름/효과 설명 팝업을 띄우기 위해 상위(PokerTable)로 알린다 */
+  onAugmentClick: (augmentId: string) => void;
 }
 
 /** 상/좌/우/하 마름모 형태로 배치되는 좌석 카드 — 이름/칩/미니 홀카드/보유 증강(항상 공개) */
@@ -118,6 +118,7 @@ function DiamondSeat({
   community,
   canSwap,
   onSwapCard,
+  onAugmentClick,
 }: DiamondSeatProps) {
   const holeCards: ClientCard[] = isMe ? myHole : player.revealedHole.length > 0 ? player.revealedHole : EMPTY_HOLE;
   // 폴드한 플레이어도 카드 자리는 그대로 유지(뒷면을 흐리게 표시)한다 — 그래야 자리마다 높이가
@@ -137,61 +138,88 @@ function DiamondSeat({
         .filter(Boolean)
         .join(' ')}
     >
-      <div className="mp-seat-info">
-        {isDealer && <span className="mp-dealer-chip">D</span>}
-        <span className="seat-name">
-          {player.name}
-          {isMe ? ' (나)' : ''}
-          {player.isBot ? ' 🤖' : ''}
-        </span>
-        <span className="seat-gold">{player.stack.toLocaleString()}</span>
-        {player.streetBet > 0 && <span className="seat-bet">베팅 {player.streetBet.toLocaleString()}</span>}
-        {player.lastAction && <span className="mp-seat-last-action">{player.lastAction}</span>}
-      </div>
-      {/* 홀카드 오른쪽에 보유 증강을 나란히 배치 — 개수가 늘어나면 이 열만 세로 스크롤된다 */}
+      {/* 홀카드 오른쪽에 보유 증강을 나란히 배치 — 개수가 늘어나면 이 열만 세로 스크롤된다.
+          닉네임 박스는 이 열이 아니라 카드 2장하고만 짝지어 쌓아서, 항상 카드 2장의 정중앙
+          위쪽에 오도록 한다(증강 칩 열의 폭에 영향받지 않음). */}
       <div className="mp-seat-body">
-        <div className="mp-seat-cards">
-          {showBacks
-            ? [0, 1].map((idx) =>
-                reveal && reveal.cardIndex === idx ? (
-                  // 음침한 눈으로 확인한 카드 — 뒷면 대신 실제 카드 + 눈 표식 (나에게만 렌더됨)
-                  <span key={idx} className="mp-revealed-card" title="음침한 눈으로 확인한 카드">
-                    <Card card={asEngineCard(reveal.card)} size="sm" />
-                    <span className="mp-revealed-eye">👁</span>
-                  </span>
-                ) : (
+        <div className="mp-seat-cards-col">
+          <div className="mp-seat-info">
+            {isDealer && <span className="mp-dealer-chip">D</span>}
+            <span className="seat-name">
+              {player.name}
+              {isMe ? ' (나)' : ''}
+              {player.isBot ? ' 🤖' : ''}
+            </span>
+            <span className="seat-gold">{player.stack.toLocaleString()}</span>
+            {player.streetBet > 0 && <span className="seat-bet">베팅 {player.streetBet.toLocaleString()}</span>}
+            {player.lastAction && <span className="mp-seat-last-action">{player.lastAction}</span>}
+          </div>
+          <div className="mp-seat-cards">
+            {showBacks
+              ? [0, 1].map((idx) =>
+                  reveal && reveal.cardIndex === idx ? (
+                    // 음침한 눈으로 확인한 카드 — 뒷면 대신 실제 카드 + 눈 표식 (나에게만 렌더됨)
+                    <span key={idx} className="mp-revealed-card" title="음침한 눈으로 확인한 카드">
+                      <Card card={asEngineCard(reveal.card)} size="sm" />
+                      <span className="mp-revealed-eye">👁</span>
+                    </span>
+                  ) : (
+                    <Card
+                      key={idx}
+                      hidden
+                      size="sm"
+                      changeFx={glowKeys.has(`${player.sessionId}:${idx}`)}
+                    />
+                  ),
+                )
+              : holeCards.map((c, idx) => (
                   <Card
-                    key={idx}
-                    card={asEngineCard(CARD_BACK)}
-                    hidden
+                    key={c.id}
+                    card={asEngineCard(c)}
                     size="sm"
+                    clickable={isMe && canSwap}
+                    onClick={isMe && canSwap ? () => onSwapCard(idx as 0 | 1) : undefined}
                     changeFx={glowKeys.has(`${player.sessionId}:${idx}`)}
+                    highlight={!!bestFiveIds?.has(c.id)}
                   />
-                ),
-              )
-            : holeCards.map((c, idx) => (
-                <Card
-                  key={c.id}
-                  card={asEngineCard(c)}
-                  size="sm"
-                  clickable={isMe && canSwap}
-                  onClick={isMe && canSwap ? () => onSwapCard(idx as 0 | 1) : undefined}
-                  changeFx={glowKeys.has(`${player.sessionId}:${idx}`)}
-                  highlight={!!bestFiveIds?.has(c.id)}
-                />
-              ))}
+                ))}
+          </div>
         </div>
-        {/* 보유 증강 — 상대방 것도 항상 공개 표시 (숨김 정보 아님) */}
+        {/* 보유 증강 — 상대방 것도 항상 공개 표시(숨김 정보 아님) + 클릭하면 이름/효과 팝업 */}
         {player.augmentIds.length > 0 && (
           <div className="mp-seat-augments">
             {player.augmentIds.map((id) => {
               const augment = findAugment(id);
-              return augment ? <AugmentCard key={id} augment={augment} compact /> : null;
+              return augment ? (
+                <AugmentCard key={id} augment={augment} compact onSelect={() => onAugmentClick(id)} />
+              ) : null;
             })}
           </div>
         )}
       </div>
       {isMe && canSwap && <span className="mp-swap-hint">🔄 카드를 클릭해 1장 교체 가능</span>}
+    </div>
+  );
+}
+
+/** 증강 뱃지 클릭 시 뜨는 이름/효과 설명 팝업 — 바깥(배경) 클릭 시 닫힌다 */
+function AugmentInfoPopup({ augment, onClose }: { augment: Augment; onClose: () => void }) {
+  return (
+    <div className="mp-augment-popup-overlay" onClick={onClose}>
+      <motion.div
+        className={`mp-augment-popup rarity-${augment.rarity}`}
+        initial={{ opacity: 0, scale: 0.85, y: 12 }}
+        animate={{ opacity: 1, scale: 1, y: 0 }}
+        transition={{ type: 'spring', stiffness: 300, damping: 22 }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <span className="mp-augment-popup-rarity">{RARITY_NAMES_KO[augment.rarity]}</span>
+        <h3 className="mp-augment-popup-name">{augment.name}</h3>
+        <p className="mp-augment-popup-desc">{augment.description}</p>
+        <button type="button" className="mp-augment-popup-close" onClick={onClose}>
+          닫기
+        </button>
+      </motion.div>
     </div>
   );
 }
@@ -367,40 +395,28 @@ function HandProgressPanel({ myHole, community }: { myHole: ClientCard[]; commun
   );
 }
 
-type InfoTab = 'chat' | 'hands' | 'history';
+const STRAIGHT_RANK = HAND_CATEGORY_ORDER.indexOf('straight');
 
+function isBigHandCategory(current: HandCategory | null): boolean {
+  return current !== null && HAND_CATEGORY_ORDER.indexOf(current) >= STRAIGHT_RANK;
+}
+
+/**
+ * 족보 목록 패널 — 항상 화면 옆에 떠 있는 상시 표시 패널(팝업 아님). 작고 컴팩트한 고정
+ * 크기 박스 안에서 10개 항목을 세로 스크롤로 확인한다. 평소엔 배경을 아주 투명하게 낮춰
+ * 눈에 띄지 않다가, 내 현재 최고 족보가 스트레이트 이상으로 올라가는 순간에만 완전히
+ * 또렷해진다(스트레이트 미만은 계속 흐림) — opacity는 CSS가 아니라 아래 style로 직접
+ * 제어한다(framer-motion을 쓰지 않는 일반 div라 CSS 클래스 토글만으로 충분하다).
+ */
 function InfoPanel({ myHole, community }: { myHole: ClientCard[]; community: ClientCard[] }) {
-  const [tab, setTab] = useState<InfoTab>('hands');
+  const current = computeCurrentCategory(myHole, community);
+  const isBigHand = isBigHandCategory(current);
 
   return (
-    <div className="mp-info-panel">
-      <div className="mp-info-tabs">
-        <button
-          type="button"
-          className={`mp-info-tab-btn${tab === 'chat' ? ' mp-info-tab-active' : ''}`}
-          onClick={() => setTab('chat')}
-        >
-          채팅
-        </button>
-        <button
-          type="button"
-          className={`mp-info-tab-btn${tab === 'hands' ? ' mp-info-tab-active' : ''}`}
-          onClick={() => setTab('hands')}
-        >
-          족보
-        </button>
-        <button
-          type="button"
-          className={`mp-info-tab-btn${tab === 'history' ? ' mp-info-tab-active' : ''}`}
-          onClick={() => setTab('history')}
-        >
-          내기록
-        </button>
-      </div>
+    <div className={`mp-info-panel${isBigHand ? ' mp-info-panel-focused' : ''}`}>
+      <div className="mp-info-header">족보</div>
       <div className="mp-info-content">
-        {tab === 'hands' && <HandProgressPanel myHole={myHole} community={community} />}
-        {tab === 'chat' && <p className="mp-info-placeholder">채팅 기능은 준비 중입니다.</p>}
-        {tab === 'history' && <p className="mp-info-placeholder">전적 기록 기능은 준비 중입니다.</p>}
+        <HandProgressPanel myHole={myHole} community={community} />
       </div>
     </div>
   );
@@ -427,7 +443,7 @@ interface CardChangeToast {
 }
 
 const CARD_CHANGE_FX_MS = 1600;
-const CARD_CHANGE_TOAST_MS = 2600;
+const CARD_CHANGE_TOAST_MS = 3000;
 
 /** 포커 테이블 화면 — 상/좌/우/하 마름모 좌석 + 상단 중앙 커뮤니티/팟 + 하단 중앙 내 카드/액션 + 우측 정보 패널 */
 export function PokerTable({
@@ -461,6 +477,9 @@ export function PokerTable({
   const [glowKeys, setGlowKeys] = useState<Set<string>>(new Set());
   const [toasts, setToasts] = useState<CardChangeToast[]>([]);
   const toastIdRef = useRef(0);
+  // 클릭해서 이름/효과 설명을 다시 확인 중인 증강 — null이면 팝업 닫힘
+  const [augmentPopupId, setAugmentPopupId] = useState<string | null>(null);
+  const augmentPopup = augmentPopupId ? findAugment(augmentPopupId) : null;
   const glowTimers = useRef(new Map<string, ReturnType<typeof setTimeout>>());
 
   useEffect(() => {
@@ -518,9 +537,10 @@ export function PokerTable({
             <motion.div
               key={t.id}
               className="mp-cardchange-toast"
-              initial={{ opacity: 0, y: -10, scale: 0.95 }}
+              initial={{ opacity: 0, y: -10, scale: 0.7 }}
               animate={{ opacity: 1, y: 0, scale: 1 }}
-              exit={{ opacity: 0, y: -6 }}
+              exit={{ opacity: 0, y: -6, scale: 0.9 }}
+              transition={{ type: 'spring', stiffness: 320, damping: 18 }}
             >
               {t.text}
             </motion.div>
@@ -560,10 +580,15 @@ export function PokerTable({
                 community={gameState.community}
                 canSwap={canSwap}
                 onSwapCard={onSwapCard}
+                onAugmentClick={setAugmentPopupId}
               />
             ))}
 
             <AnimatePresence>{lastResult && <ResultBanner key="result" result={lastResult} />}</AnimatePresence>
+
+            {/* 우측 상단 좌석(마름모 배치의 .mp-diamond-right) 바로 아래 고정 — 그 좌석에
+                누가 앉든(내 시점에 따라 상대적으로 바뀌어도) 항상 이 자리에 위치한다 */}
+            <InfoPanel myHole={myHole} community={gameState.community} />
           </div>
 
           <div className={`mp-bottom-panel${isMyTurn ? ' mp-bottom-panel-my-turn' : ''}`}>
@@ -572,6 +597,8 @@ export function PokerTable({
                 <BettingActionBar gameState={gameState} myPlayer={myPlayer} onAction={onAction} />
               ) : gameState.phase === 'augment_target' ? (
                 <p className="mp-waiting-turn">플레이어들이 즉시형 증강 효과 대상을 지정하는 중입니다...</p>
+              ) : gameState.phase === 'augment_select' ? (
+                <p className="mp-waiting-turn">잠시 후 증강 선택 화면이 열립니다...</p>
               ) : (
                 BETTING_PHASES.has(gameState.phase) && (
                   <p className="mp-waiting-turn">
@@ -582,9 +609,11 @@ export function PokerTable({
             </div>
           </div>
         </div>
-
-        <InfoPanel myHole={myHole} community={gameState.community} />
       </div>
+
+      <AnimatePresence>
+        {augmentPopup && <AugmentInfoPopup key={augmentPopup.id} augment={augmentPopup} onClose={() => setAugmentPopupId(null)} />}
+      </AnimatePresence>
       </div>
       </div>
     </div>
