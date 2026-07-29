@@ -108,6 +108,20 @@ export class PokerRoom extends Room<PokerState> {
   /** augment_target에서 현재 차례인 플레이어(사람의 응답 대기 또는 봇의 처리 딜레이) 전용 타이머 */
   private targetPromptTimer?: Delayed;
 
+  /**
+   * 밑장빼기 — 이번 스트리트 리빌 직전, 아직 사용하지 않은 보유자들에게 순서대로
+   * "사용하시겠습니까?" 를 묻는다(augment_target의 targetPhaseOrder와 같은 구조).
+   */
+  private streetRevealQueue: string[] = [];
+  /** 지금 프롬프트를 보낸 대상 — 이 값과 일치하는 클라이언트의 응답만 유효 처리 */
+  private streetRevealCurrentId: string | null = null;
+  /** 이번 스트리트에 "사용"을 선택한 인원 수 — 그만큼 딜링 전에 덱 맨 위 카드를 추가로 버린다 */
+  private streetRevealBurnCount = 0;
+  /** street_reveal_choice를 마치면 실제로 진입할 phase(flop/turn/river)와 딜링할 장수 */
+  private pendingStreetPhase: Phase | null = null;
+  private pendingStreetDealCount = 0;
+  private streetRevealPromptTimer?: Delayed;
+
   onCreate() {
     this.state = new PokerState();
     this.state.maxRounds = MAX_ROUNDS;
@@ -126,6 +140,10 @@ export class PokerRoom extends Room<PokerState> {
     this.onMessage('swapCard', (client, message: { index?: unknown }) =>
       this.handleSwapCard(client, message),
     );
+    this.onMessage('bottomDealChoice', (client, message: { use?: unknown }) =>
+      this.handleBottomDealChoice(client, message),
+    );
+    this.onMessage('resetBoard', (client) => this.handleResetBoard(client));
     this.onMessage('startGame', (client) => this.handleStartGame(client));
   }
 
@@ -240,6 +258,17 @@ export class PokerRoom extends Room<PokerState> {
       if (wasActive) this.advanceTargetPhasePlayer();
       return;
     }
+    if (this.state.phase === 'street_reveal_choice') {
+      const wasActive = this.streetRevealCurrentId === p.sessionId;
+      this.streetRevealQueue = this.streetRevealQueue.filter((id) => id !== p.sessionId);
+      if (wasActive) {
+        this.streetRevealPromptTimer?.clear();
+        this.streetRevealCurrentId = null;
+        this.resolveBottomDealChoice(p, false);
+        this.advanceStreetRevealPlayer();
+      }
+      return;
+    }
     if (BETTING_PHASES.has(this.state.phase)) this.resolveAfterAction();
   }
 
@@ -345,6 +374,9 @@ export class PokerRoom extends Room<PokerState> {
       p.hasActed = false;
       p.streetBet = 0;
       p.swapUsed = false;
+      p.bottomDealUsed = false;
+      p.resetBoardUsed = false;
+      p.holeCount = 2;
       p.lastAction = '';
       p.revealedHole.clear();
       p.pendingTargetAugment = '';
@@ -356,9 +388,35 @@ export class PokerRoom extends Room<PokerState> {
     // 블라인드 — 딜러 다음 두 자리가 스몰/빅 블라인드를 강제 베팅
     const { bigBlindSeat } = this.postBlinds(active);
 
-    // 딜링 + 증강 훅 (on_shuffle / on_round_start)
+    // 전원에게 적용되는 테이블 단위 증강(대풍년/흔들리는 테이블) — 누구 한 명이라도
+    // 보유하고 있으면(소유자만이 아니라) 이번 라운드 전체 딜링 방식에 영향을 준다.
+    const anyExtraHole = active.some((p) => findByEffect(this.ownedAugments(p), 'extra_hole_card'));
+    const anyRotate = active.some((p) => findByEffect(this.ownedAugments(p), 'rotate_hole_cards'));
+    const holeCount = anyExtraHole ? 3 : 2;
+
+    // 1) 기본 딜링 — active 배열은 seatIndex 오름차순(=시계 방향) 순서다
+    const dealtHoles = new Map<string, Card[]>();
     for (const p of active) {
-      let hole: Card[] = [this.deck.pop()!, this.deck.pop()!];
+      const hole: Card[] = [];
+      for (let i = 0; i < holeCount; i++) hole.push(this.deck.pop()!);
+      dealtHoles.set(p.sessionId, hole);
+    }
+
+    // 2) 흔들리는 테이블 — 방금 딜링된 손을 시계 방향으로 한 자리씩 넘긴다(내 카드는
+    // 다음 사람에게 = 나는 이전 사람의 손을 받는다)
+    if (anyRotate && active.length > 1) {
+      const rotated = new Map<string, Card[]>();
+      active.forEach((p, i) => {
+        const from = active[(i - 1 + active.length) % active.length];
+        rotated.set(p.sessionId, dealtHoles.get(from.sessionId)!);
+      });
+      for (const [sid, hole] of rotated) dealtHoles.set(sid, hole);
+    }
+
+    // 3) 증강 훅 (on_shuffle / on_round_start) — 회전이 끝난 뒤, 최종적으로 내가
+    // 쥐게 된 손을 기준으로 적용한다
+    for (const p of active) {
+      let hole = dealtHoles.get(p.sessionId)!;
       const owned = this.ownedAugments(p);
 
       const bias = findByEffect(owned, 'shuffle_bias');
@@ -369,8 +427,24 @@ export class PokerRoom extends Room<PokerState> {
         hole[idx] = { ...hole[idx], isJoker: true };
       }
 
+      p.holeCount = hole.length;
       this.holes.set(p.sessionId, hole);
       this.sendHole(p.sessionId);
+    }
+
+    // 흔들리는 테이블이 실제로 발동했음을 전원에게 알린다 — 카드 값은 담지 않고, 기존
+    // "카드 변경" 글로우 연출(cardChange)을 재사용해 모든 좌석의 홀카드에 잠깐 글로우를 준다
+    if (anyRotate && active.length > 1) {
+      const shakyTable = active
+        .flatMap((p) => this.ownedAugments(p))
+        .find((a) => a.effect.type === 'rotate_hole_cards')!;
+      this.broadcastCardChange(
+        shakyTable,
+        active.flatMap((p) => [
+          { sessionId: p.sessionId, cardIndex: 0 as const },
+          { sessionId: p.sessionId, cardIndex: 1 as const },
+        ]),
+      );
     }
 
     // 프리플랍은 빅블라인드 다음(UTG)부터 시작 — 헤즈업이면 postBlinds가 딜러=SB로 배정해
@@ -705,18 +779,22 @@ export class PokerRoom extends Room<PokerState> {
     return { smallBlindSeat: sb ? sb.seatIndex : -1, bigBlindSeat: bb ? bb.seatIndex : -1 };
   }
 
-  /** "로열의 예언" — 같은 무늬 브로드웨이 2장으로 홀카드 교체 (연출용 편향) */
+  /**
+   * "로열의 예언" — 같은 무늬 브로드웨이 카드들로 홀카드 전체 교체 (연출용 편향).
+   * 대풍년으로 홀카드가 3장이면 3장 모두 브로드웨이로 채우려 시도하고, 그만큼 못
+   * 찾으면(picks.length < hole.length) 포기하고 원래 손을 그대로 둔다.
+   */
   private riggedBroadway(hole: Card[]): Card[] {
     const suit: Suit = SUITS[Math.floor(Math.random() * SUITS.length)];
     const picks: Card[] = [];
-    for (let i = this.deck.length - 1; i >= 0 && picks.length < 2; i--) {
+    for (let i = this.deck.length - 1; i >= 0 && picks.length < hole.length; i--) {
       const c = this.deck[i];
       if (c.suit === suit && c.rank >= 10) {
         picks.push(c);
         this.deck.splice(i, 1);
       }
     }
-    if (picks.length < 2) {
+    if (picks.length < hole.length) {
       this.deck.push(...picks);
       return hole;
     }
@@ -904,10 +982,90 @@ export class PokerRoom extends Room<PokerState> {
     if (st.phase === 'river' || canAct.length <= 1) return this.runoutAndShowdown();
 
     const dealCount = st.phase === 'preflop' ? 3 : 1;
-    this.setPhase(st.phase === 'preflop' ? 'flop' : st.phase === 'flop' ? 'turn' : 'river');
-    this.dealBoard(dealCount);
+    const nextPhase: Phase = st.phase === 'preflop' ? 'flop' : st.phase === 'flop' ? 'turn' : 'river';
 
-    // 포스트플랍은 딜러 다음의 첫 활성 좌석부터 (헤즈업이면 자연히 빅블라인드 쪽)
+    // 밑장빼기 — 아직 사용하지 않은 보유자가 있으면(전원 올인이라 더 이상 액션이 없는
+    // 러너 상황은 제외 — canAct 기준 실제로 액션 가능한 인원만) 공개 직전 사용 여부를 묻는다
+    const eligible = canAct.filter((p) => !p.bottomDealUsed && findByEffect(this.ownedAugments(p), 'bottom_deal'));
+    if (eligible.length === 0) {
+      this.setPhase(nextPhase);
+      this.dealBoard(dealCount);
+      const first = this.firstActor();
+      if (!first) return this.runoutAndShowdown();
+      return this.setTurn(first);
+    }
+
+    this.pendingStreetPhase = nextPhase;
+    this.pendingStreetDealCount = dealCount;
+    this.streetRevealBurnCount = 0;
+    this.streetRevealQueue = eligible.map((p) => p.sessionId);
+    this.setPhase('street_reveal_choice');
+    this.advanceStreetRevealPlayer();
+  }
+
+  /** 밑장빼기 대상 지정 큐의 다음 사람 — 전원 처리되면 실제로 스트리트를 진행한다 */
+  private advanceStreetRevealPlayer(): void {
+    if (this.state.phase !== 'street_reveal_choice') return;
+    this.streetRevealPromptTimer?.clear();
+    this.streetRevealCurrentId = null;
+
+    const nextId = this.streetRevealQueue.shift();
+    if (!nextId) return this.resolveStreetReveal();
+    const p = this.state.players.get(nextId);
+    if (!p) return this.advanceStreetRevealPlayer();
+
+    if (p.isBot) {
+      const delay =
+        BOT_TARGET_RESOLVE_DELAY_MIN_MS + Math.random() * (BOT_TARGET_RESOLVE_DELAY_MAX_MS - BOT_TARGET_RESOLVE_DELAY_MIN_MS);
+      this.streetRevealPromptTimer = this.clock.setTimeout(() => {
+        this.resolveBottomDealChoice(p, Math.random() < 0.4);
+        this.advanceStreetRevealPlayer();
+      }, delay);
+      return;
+    }
+
+    this.streetRevealCurrentId = p.sessionId;
+    const client = this.clients.find((c) => c.sessionId === p.sessionId);
+    client?.send('bottomDealPrompt', {});
+    this.streetRevealPromptTimer = this.clock.setTimeout(() => {
+      this.resolveBottomDealChoice(p, false); // 시간 초과 = 사용 안 함(스킵), 라운드 내 재사용 가능하지 않음
+      this.advanceStreetRevealPlayer();
+    }, AUGMENT_TARGET_TIMEOUT_MS);
+  }
+
+  private handleBottomDealChoice(client: Client, message: { use?: unknown }) {
+    if (this.state.phase !== 'street_reveal_choice') return;
+    if (client.sessionId !== this.streetRevealCurrentId) return;
+    const p = this.state.players.get(client.sessionId);
+    if (!p) return;
+    this.streetRevealPromptTimer?.clear();
+    this.streetRevealCurrentId = null;
+    this.resolveBottomDealChoice(p, message?.use === true);
+    this.advanceStreetRevealPlayer();
+  }
+
+  /** 밑장빼기 사용 여부 확정 — 라운드당 1회 소모되며, 사용을 선택했을 때만 버림 카드 수가 늘어난다 */
+  private resolveBottomDealChoice(p: PlayerState, use: boolean) {
+    p.bottomDealUsed = true;
+    if (use) {
+      this.streetRevealBurnCount += 1;
+      this.broadcast('notice', { text: `🃏 ${p.name}님이 밑장을 뺐습니다` });
+    }
+  }
+
+  /** street_reveal_choice 큐가 전부 끝나면 실제로 카드를 (필요시 버림 후) 공개하고 스트리트를 진행한다 */
+  private resolveStreetReveal() {
+    const nextPhase = this.pendingStreetPhase;
+    const dealCount = this.pendingStreetDealCount;
+    this.pendingStreetPhase = null;
+    this.pendingStreetDealCount = 0;
+    if (!nextPhase) return;
+
+    for (let i = 0; i < this.streetRevealBurnCount; i++) this.deck.pop();
+    this.streetRevealBurnCount = 0;
+
+    this.setPhase(nextPhase);
+    this.dealBoard(dealCount);
     const first = this.firstActor();
     if (!first) return this.runoutAndShowdown();
     this.setTurn(first);
@@ -934,9 +1092,22 @@ export class PokerRoom extends Room<PokerState> {
     this.setActivePlayer(null);
 
     const contenders = this.actingPlayers();
+
+    // 러시안 룰렛 — 누구 한 명이라도 보유하면(소유자만 유리한 게 아니라) 전원 동일하게
+    // 무작위 커뮤니티 카드 1장을 제외하고 판정한다. 이 라운드에서 실제로 발동했으면
+    // result 브로드캐스트에 제거된 카드 id를 실어 클라이언트가 X 표시로 연출한다.
+    const hasRoulette = contenders.some((p) => findByEffect(this.ownedAugments(p), 'remove_random_community'));
+    let evalBoard = this.board;
+    let removedCard: Card | null = null;
+    if (hasRoulette && this.board.length > 0) {
+      const idx = Math.floor(Math.random() * this.board.length);
+      removedCard = this.board[idx];
+      evalBoard = this.board.filter((_, i) => i !== idx);
+    }
+
     const results: { p: PlayerState; hand: HandResult }[] = contenders.map((p) => ({
       p,
-      hand: evaluateBest([...this.holes.get(p.sessionId)!, ...this.board]),
+      hand: evaluateBest([...this.holes.get(p.sessionId)!, ...evalBoard]),
     }));
 
     // 홀카드 전체 공개
@@ -980,6 +1151,7 @@ export class PokerRoom extends Room<PokerState> {
         name: r.p.name,
         category: r.hand.category,
       })),
+      removedCommunityCardId: removedCard?.id,
     });
 
     this.setPhase('round_end');
@@ -1018,6 +1190,7 @@ export class PokerRoom extends Room<PokerState> {
     this.clearTurnTimer();
     this.augmentTimer?.clear();
     this.targetPromptTimer?.clear();
+    this.streetRevealPromptTimer?.clear();
     this.setPhase('gameOver');
     this.setActivePlayer(null);
     const standings = this.seatOrder()
@@ -1047,6 +1220,39 @@ export class PokerRoom extends Room<PokerState> {
     p.swapUsed = true;
     this.sendHole(client.sessionId);
     this.broadcastCardChange(augment, [{ sessionId: client.sessionId, cardIndex: index }]);
+  }
+
+  // ─────────────────────────── 증강: 리셋 버튼 ───────────────────────────
+
+  /**
+   * 리셋 버튼 — 본인 차례에 한해(카드 재구성과 달리 "본인 턴에 사용 가능"이 스펙이라
+   * activePlayerId까지 검증한다), 라운드당 1회, 현재 공개된 커뮤니티 카드를 전부 버리고
+   * 같은 장수만큼 새로 딜링한다. 베팅/팟은 건드리지 않고, 액션을 소비하지도 않는다 —
+   * 리셋 후에도 본인은 이어서 정상적으로 폴드/체크/콜/레이즈를 선택할 수 있다.
+   *
+   * 사용 시점은 플랍(커뮤니티 3번째 장 공개) 단계까지만으로 제한한다 — 턴(4번째 장)이
+   * 공개된 뒤에는 더 이상 사용할 수 없다(기획 스펙 — 프리플랍은 보드 자체가 없어 애초에
+   * 대상이 없고, 턴/리버까지 허용하면 상대가 이미 베팅한 정보를 본 뒤에 보드를 통째로
+   * 되돌릴 수 있어 밸런스가 깨진다).
+   */
+  private handleResetBoard(client: Client) {
+    const st = this.state;
+    if (st.phase !== 'flop')
+      return this.reject(client, '리셋 버튼은 플랍(3번째 보드 카드) 공개 시점까지만 사용할 수 있습니다');
+    if (client.sessionId !== st.activePlayerId) return this.reject(client, '본인 차례에만 사용할 수 있습니다');
+    const p = st.players.get(client.sessionId);
+    if (!p || p.isFolded) return;
+    const augment = findByEffect(this.ownedAugments(p), 'reset_board');
+    if (!augment) return this.reject(client, '리셋 버튼 증강이 없습니다');
+    if (p.resetBoardUsed) return this.reject(client, '이번 라운드에 이미 사용했습니다');
+    if (this.board.length === 0) return this.reject(client, '아직 공개된 보드가 없습니다');
+
+    const count = this.board.length;
+    this.board = [];
+    st.community.clear();
+    this.dealBoard(count);
+    p.resetBoardUsed = true;
+    this.broadcast('notice', { text: `🔄 ${p.name}님이 보드를 리셋했습니다` });
   }
 
   // ─────────────────────────── 유틸 ───────────────────────────

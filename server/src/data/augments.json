@@ -64,5 +64,45 @@
     "trigger": "on_hand_start",
     "effect": { "type": "swap_with_opponent", "value": 1 },
     "description": "매 핸드 시작 시 — 상대 1명을 지목해 내 홀카드 1장과 상대 홀카드 1장을 맞바꾼다"
+  },
+  {
+    "id": "aug_bottom_deal",
+    "name": "밑장빼기",
+    "rarity": "silver",
+    "trigger": "on_street_reveal",
+    "effect": { "type": "bottom_deal", "value": 1 },
+    "description": "라운드당 1회 — 플랍/턴/리버 공개 직전, 덱 맨 위 카드를 버리고 다음 카드를 공개할 수 있다"
+  },
+  {
+    "id": "aug_russian_roulette",
+    "name": "러시안 룰렛",
+    "rarity": "prismatic",
+    "trigger": "on_showdown",
+    "effect": { "type": "remove_random_community", "value": 1 },
+    "description": "쇼다운 시 무작위 커뮤니티 카드 1장이 제외된 채로 전원의 족보를 판정한다 (누구에게나 동일하게 적용)"
+  },
+  {
+    "id": "aug_bumper_crop",
+    "name": "대풍년",
+    "rarity": "prismatic",
+    "trigger": "on_round_start",
+    "effect": { "type": "extra_hole_card", "value": 1 },
+    "description": "이번 라운드 모든 플레이어의 홀카드가 1장씩 추가된다 (3장으로 플레이, 최고 5장 조합은 동일)"
+  },
+  {
+    "id": "aug_shaky_table",
+    "name": "흔들리는 테이블",
+    "rarity": "prismatic",
+    "trigger": "on_round_start",
+    "effect": { "type": "rotate_hole_cards", "value": 1 },
+    "description": "라운드 시작 시 모든 플레이어의 홀카드가 시계 방향으로 한 자리씩 넘어간다 (내 카드는 다음 사람에게)"
+  },
+  {
+    "id": "aug_reset_button",
+    "name": "리셋 버튼",
+    "rarity": "gold",
+    "trigger": "on_turn",
+    "effect": { "type": "reset_board", "value": 1 },
+    "description": "라운드 중 1회, 본인 차례에 현재 커뮤니티 카드를 전부 회수하고 다시 딜링한다 (베팅/팟은 그대로). 플랍(3번째 보드 카드) 공개 시점까지만 사용 가능"
   }
 ]

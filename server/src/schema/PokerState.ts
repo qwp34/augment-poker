@@ -40,6 +40,12 @@ export class PlayerState extends Schema {
   @type('boolean') connected = true;
   /** 카드 재구성 증강 사용 여부 (핸드당 1회) */
   @type('boolean') swapUsed = false;
+  /** 밑장빼기 증강 사용 여부 (라운드당 1회) */
+  @type('boolean') bottomDealUsed = false;
+  /** 리셋 버튼 증강 사용 여부 (라운드당 1회) */
+  @type('boolean') resetBoardUsed = false;
+  /** 이번 핸드 홀카드 매수 — 평소 2장, 대풍년 보유자가 있으면 전원 3장 (뒷면 카드 개수 렌더링에 사용) */
+  @type('uint8') holeCount = 2;
   /** 마지막 액션 표시용 ("콜 200", "레이즈 +500"...) */
   @type('string') lastAction = '';
   /** 쇼다운 시에만 채워지는 공개 홀카드 */
@@ -73,6 +79,9 @@ export class PlayerState extends Schema {
  * 플레이어가 있을 때만 거치는 단계 — 매 핸드, 홀카드가 갓 딜링된 직후·베팅 시작 전에
  * 대상(플레이어/카드)을 지정해 효과(카드 확인/변경/교환)를 해소한다. 그런 증강을 보유한
  * 플레이어가 아무도 없으면 건너뛴다. 보유하고 있는 한 이 phase는 라운드마다 반복된다.
+ * street_reveal_choice: 밑장빼기를 아직 사용하지 않은 보유자가 있을 때만 거치는 단계 —
+ * 플랍/턴/리버로 넘어가기 직전, 그 카드를 공개하기 전에 사용 여부(예/아니오)를 순서대로
+ * 묻는다. 아무도 해당 증강을 보유하지 않았거나 전원 이미 사용했으면 건너뛴다.
  */
 export type Phase =
   | 'waiting'
@@ -82,6 +91,7 @@ export type Phase =
   | 'flop'
   | 'turn'
   | 'river'
+  | 'street_reveal_choice'
   | 'showdown'
   | 'round_end'
   | 'gameOver';

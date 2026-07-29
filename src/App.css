@@ -741,6 +741,7 @@
 }
 
 .pot-capsule {
+  position: relative;
   display: flex;
   align-items: center;
   gap: 10px;
@@ -771,6 +772,30 @@
   position: relative;
   display: flex;
   gap: 9px;
+}
+
+/* 러시안 룰렛 — 쇼다운 시 판정에서 제외된 커뮤니티 카드에 X 표시로 연출 */
+.mp-board-card-slot {
+  position: relative;
+  display: inline-flex;
+}
+
+.mp-board-card-removed .pcard {
+  opacity: 0.4;
+  filter: grayscale(0.7);
+}
+
+.mp-removed-x {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 2.6rem;
+  font-weight: 900;
+  color: #ff5252;
+  text-shadow: 0 0 14px rgba(255, 82, 82, 0.85), 0 0 4px rgba(0, 0, 0, 0.8);
+  pointer-events: none;
 }
 
 .pcard {
@@ -1963,19 +1988,140 @@
   animation: blink 1s ease-in-out infinite alternate;
 }
 
-/* ── 족보 패널 — 화면 바깥이 아니라 테이블 내부, "우측 상단 좌석"(마름모 배치의
-   .mp-diamond-right, 내 시점 기준 상대적으로 배정되는 자리 — 특정 플레이어 컴포넌트가
-   아니라 .mp-table-area 좌표계 기준으로 고정) 정보 박스 바로 아래에 도킹한다.
-   .mp-diamond-right는 top:50% + translateY(-50%)로 테이블 세로 중앙에 오고, 좌석 전체
-   높이(정보 박스 + 카드 + 보유 증강 칸)는 증강 개수와 무관하게 대략 320px를 넘지 않으므로
-   (증강 칸은 max-height:140px로 스크롤 처리됨), 세로 중앙보다 좀 더 아래(top: 660px)에
-   두면 그 좌석 바로 아래에서 시작하고, 우측 정렬(right: 14px)로 좌석과 가로로 겹친다.
+/* 배팅 액션 바 + 리셋 버튼(보유 시에만) — 세로로 쌓아 기존 6버튼 그리드 폭에 영향을 주지 않는다 */
+.mp-action-with-extra {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 10px;
+  width: 100%;
+}
+
+.mp-reset-board-btn {
+  height: 44px;
+  border-radius: 12px;
+  border: 1.5px solid var(--teal);
+  background: rgba(74, 217, 192, 0.08);
+  color: var(--teal);
+  font-size: 0.95rem;
+  font-weight: 700;
+  align-self: center;
+  padding: 0 22px;
+  transition: background 0.15s, box-shadow 0.15s;
+}
+
+.mp-reset-board-btn:hover {
+  background: rgba(74, 217, 192, 0.18);
+  box-shadow: 0 0 14px rgba(74, 217, 192, 0.45);
+}
+
+/* 턴(4번째 보드 카드) 공개 이후 — 플랍 단계가 지나 더 이상 사용할 수 없음을 회색으로 표시 */
+.mp-reset-board-btn-disabled {
+  border-color: rgba(255, 255, 255, 0.25);
+  background: rgba(255, 255, 255, 0.05);
+  color: rgba(255, 255, 255, 0.35);
+  cursor: not-allowed;
+}
+
+.mp-reset-board-btn-disabled:hover {
+  background: rgba(255, 255, 255, 0.05);
+  box-shadow: none;
+}
+
+/* ── 턴 타이머 카운트다운 링 — 현재 차례인 좌석의 정보 박스(.mp-seat-info)를 감싼다 ── */
+.mp-turn-ring {
+  position: absolute;
+  inset: -10px;
+  width: calc(100% + 20px);
+  height: calc(100% + 20px);
+  transform: rotate(-90deg);
+  pointer-events: none;
+  z-index: 1;
+}
+
+.mp-turn-ring-bg {
+  fill: none;
+  stroke: rgba(255, 255, 255, 0.12);
+  stroke-width: 3;
+}
+
+.mp-turn-ring-fg {
+  fill: none;
+  stroke: var(--teal);
+  stroke-width: 3;
+  stroke-linecap: round;
+}
+
+.mp-turn-ring-urgent .mp-turn-ring-fg {
+  stroke: #ff5252;
+  animation: turn-ring-blink 0.5s ease-in-out infinite alternate;
+}
+
+@keyframes turn-ring-blink {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0.35;
+  }
+}
+
+/* ── 칩 이동 연출 — 베팅(좌석→팟) / 배당(팟→승자) 공용, transform+opacity만 사용 ── */
+.mp-chip-fly {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  font-size: 1.1rem;
+  pointer-events: none;
+  z-index: 4;
+  transform: translate(-50%, -50%);
+}
+
+.mp-chip-fly-payout {
+  font-size: 1.4rem;
+}
+
+/* ── 사운드 on/off 토글 — 화면 구석에 작게 고정, 상태는 세션(탭) 안에서만 유지 ── */
+.mp-sound-toggle {
+  position: fixed;
+  top: 14px;
+  right: 14px;
+  z-index: 50;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  border: 1.5px solid rgba(255, 255, 255, 0.25);
+  background: rgba(6, 18, 22, 0.75);
+  color: var(--text-dim);
+  font-size: 1rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: border-color 0.15s, background 0.15s;
+}
+
+.mp-sound-toggle:hover {
+  border-color: var(--teal);
+  background: rgba(74, 217, 192, 0.15);
+}
+
+/* ── 족보 패널 — 화면 바깥이 아니라 테이블 내부, 우측 하단 모서리 안쪽에 고정한다.
+   특정 플레이어 좌석(.mp-diamond-right 등)에 종속되지 않고 .mp-table-area 좌표계
+   기준으로만 고정되므로, 내 시점에 따라 우측 좌석에 다른 플레이어가 오더라도 이 패널의
+   위치는 절대 바뀌지 않는다. .mp-table-area는 1650×1000 고정 캔버스이고, 우측 좌석
+   (.mp-diamond-right)은 top:50%로 세로 중앙(약 y=500)에 오며 실측 높이가 대략 150~
+   160px 정도라 y=580 아래로는 내려오지 않는다 — 이 패널을 bottom:20px(패널 높이
+   230px이므로 y=750~980 구간)에 두면 우측 좌석과도, 테이블 바깥의 하단 배팅 바
+   (.mp-bottom-panel, 별도 DOM이라 애초에 겹칠 수 없음)와도 절대 겹치지 않는다.
+   가로로도 우측 정렬(right: 14px, 폭 210px)이라 가운데 정렬된 하단 좌석(.mp-diamond-
+   bottom, 폭 380px)과 겹치지 않는다.
    10개 족보 항목은 이 작은 박스 안에서 세로 스크롤로 확인한다.
-   평소엔 배경을 아주 투명하게(불투명도 10%) 낮춰 거의 안 보이게 두다가, 내 최고 족보가
-   스트레이트 이상이 되는 순간 완전히 또렷해진다(.mp-info-panel-focused). */
+   평소에도 배경이 충분히 불투명해 잘 보이도록 하되, 내 최고 족보가 스트레이트 이상이
+   되는 순간 완전히 또렷해진다(.mp-info-panel-focused). 텍스트는 항상 선명해야 하므로
+   블러는 쓰지 않고 opacity만으로 강조 대비를 준다. */
 .mp-info-panel {
   position: absolute;
-  top: 660px;
+  bottom: 20px;
   right: 14px;
   z-index: 4;
   width: 210px;
@@ -1986,7 +2132,7 @@
   border: 1px solid #1f5c46;
   border-radius: 14px;
   overflow: hidden;
-  opacity: 0.1;
+  opacity: 0.72;
   transition: opacity 0.4s ease;
 }
 

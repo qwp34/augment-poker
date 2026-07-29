@@ -14,8 +14,20 @@ export type AugmentRarity = 'silver' | 'gold' | 'prismatic';
  * 적용되고, 그 뒤로는 계속 보유하고 있어도 다시 발동하지 않는다(효과 소모 처리).
  * 대상 지정(상대/카드/숫자·무늬)이 필요한 증강은 PokerRoom이 augment_target phase에서
  * 대상을 받아 처리한다 (음침한 눈 / 카멜레온 / 당근이세요?).
+ *
+ * 'on_street_reveal'(밑장빼기)과 'on_turn'(리셋 버튼)은 카드 재구성(card_swap)과 같은
+ * 계열 — trigger 자체는 분류/문서화용이고, 실제 "라운드당 1회" 제약과 발동 시점은
+ * PokerRoom이 전용 메시지 핸들러 + PlayerState 플래그(bottomDealUsed/resetBoardUsed)로
+ * 직접 관리한다.
  */
-export type AugmentTrigger = 'on_showdown' | 'on_hand_start' | 'on_round_start' | 'on_shuffle' | 'on_pick';
+export type AugmentTrigger =
+  | 'on_showdown'
+  | 'on_hand_start'
+  | 'on_round_start'
+  | 'on_shuffle'
+  | 'on_pick'
+  | 'on_street_reveal'
+  | 'on_turn';
 
 export type AugmentEffectType =
   | 'payout_multiplier'
@@ -24,7 +36,12 @@ export type AugmentEffectType =
   | 'shuffle_bias'
   | 'reveal_opponent_card'
   | 'edit_own_card'
-  | 'swap_with_opponent';
+  | 'swap_with_opponent'
+  | 'bottom_deal'
+  | 'remove_random_community'
+  | 'extra_hole_card'
+  | 'rotate_hole_cards'
+  | 'reset_board';
 
 /**
  * 대상 지정(상대 플레이어/카드/숫자·무늬)이 필요한 효과인지 — (일회성이 아닌 한) 매 핸드

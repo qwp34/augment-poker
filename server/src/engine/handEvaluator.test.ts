@@ -196,6 +196,76 @@ describe('evaluateBest — 족보 판정', () => {
   it('5장 미만이면 에러를 던진다', () => {
     assert.throws(() => evaluateBest([c('spades', 2), c('hearts', 3), c('diamonds', 4)]));
   });
+
+  it('대풍년(홀카드 3장 + 커뮤니티 5장 = 8장)에서도 최고 5장을 정확히 골라낸다', () => {
+    // 홀카드 3장(9,9,2) + 커뮤니티 5장 — 9 트리플이 완성되는 조합이 최고여야 한다
+    const hand = evaluateBest([
+      c('spades', 9),
+      c('hearts', 9),
+      c('clubs', 2),
+      c('diamonds', 9),
+      c('clubs', 5),
+      c('spades', 13),
+      c('hearts', 7),
+      c('diamonds', 3),
+    ]);
+    assert.equal(hand.category, 'three_of_a_kind');
+    assert.equal(hand.bestFive.length, 5);
+    assert.deepEqual(hand.score, [3, 9, 13, 7]);
+  });
+
+  it('대풍년 + 조커(황금 뒤집개) 조합 — 8장 중에서도 조커가 최적의 무늬로 배정된다', () => {
+    const hand = evaluateBest([
+      c('hearts', 4),
+      c('hearts', 7),
+      c('hearts', 9),
+      c('spades', 2, true), // 홀카드 3장째가 조커
+      c('hearts', 13),
+      c('clubs', 6),
+      c('diamonds', 8),
+      c('clubs', 11),
+    ]);
+    assert.equal(hand.category, 'flush');
+  });
+
+  it('러시안 룰렛(커뮤니티 1장 제외 — 홀카드 2장 + 커뮤니티 4장 = 6장)에서도 정상 판정된다', () => {
+    // 커뮤니티에서 플러시 완성 카드 1장이 제거된 상황을 가정 — 남은 6장으로는 페어만 완성
+    const hand = evaluateBest([c('spades', 9), c('hearts', 9), c('diamonds', 2), c('clubs', 5), c('spades', 13), c('hearts', 7)]);
+    assert.equal(hand.category, 'pair');
+    assert.equal(hand.bestFive.length, 5);
+  });
+
+  it('일반 상황(홀카드 2장 + 커뮤니티 5장 = 7장)은 커뮤니티 카드가 제거되지 않은 채 그대로 7장으로 판정된다', () => {
+    // 러시안 룰렛이 발동하지 않은 평범한 쇼다운 — 7장 전체가 그대로 평가에 들어가야 한다
+    // (제거 로직이 실수로 항상 적용되면 이 케이스의 플러시가 깨진다)
+    const hand = evaluateBest([
+      c('hearts', 4),
+      c('hearts', 7),
+      c('hearts', 9),
+      c('hearts', 11),
+      c('hearts', 13),
+      c('clubs', 2),
+      c('diamonds', 6),
+    ]);
+    assert.equal(hand.category, 'flush');
+    assert.equal(hand.bestFive.length, 5);
+  });
+
+  it('복합 상황 — 대풍년(홀카드 3장) + 러시안 룰렛(커뮤니티 4장) + 황금 뒤집개(조커)가 동시에 겹쳐도 정확히 판정된다', () => {
+    // 홀카드 3장 중 1장이 조커, 커뮤니티는 러시안 룰렛으로 1장 제외되어 4장만 전달됨 (총 7장)
+    // 조커가 하트로 배정되면 하트 4장(4,7,9,13) + 조커 = 플러시가 완성되어야 한다
+    const hand = evaluateBest([
+      c('hearts', 4),
+      c('hearts', 7),
+      c('spades', 2, true), // 대풍년 3번째 홀카드가 조커
+      c('hearts', 9),
+      c('hearts', 13),
+      c('clubs', 6),
+      c('diamonds', 8),
+    ]);
+    assert.equal(hand.category, 'flush');
+    assert.equal(hand.bestFive.length, 5);
+  });
 });
 
 describe('compareHands — 동점(킥커) 비교 및 승자 판정', () => {

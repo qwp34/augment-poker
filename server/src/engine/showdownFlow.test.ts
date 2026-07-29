@@ -114,4 +114,35 @@ describe('쇼다운 파이프라인: 족보 판정 -> 승자 결정 -> 증강 �
     assert.equal(payouts[0].category, 'three_of_a_kind');
     assert.equal(payouts[0].payout, 750);
   });
+
+  it('복합 상황: 러시안 룰렛(커뮤니티 1장 제외) + 대풍년(홀카드 3장) + 배당 증강이 동시에 겹쳐도 정확히 처리된다', () => {
+    // PokerRoom.showdown()과 동일하게, 판정 직전 커뮤니티에서 무작위(여기선 고정) 1장을 제외한다.
+    // 제외되는 카드(hearts-9)는 홀카드/남은 커뮤니티의 최종 족보(포카드)엔 영향을 주지 않는
+    // 무관한 카드로 골라, "제외 로직 자체가 정확히 그 1장만 빼고 나머지로 판정하는지"를 검증한다.
+    const fullCommunity = [c('hearts', 2), c('hearts', 5), c('hearts', 9), c('spades', 6), c('clubs', 6)];
+    const removedIdx = 2; // hearts-9 제외
+    const evalCommunity = fullCommunity.filter((_, i) => i !== removedIdx);
+
+    const winner: Contender = {
+      id: 'A',
+      // 대풍년으로 홀카드 3장 — diamonds-6/hearts-6 + 남은 커뮤니티의 spades-6/clubs-6과 합쳐 6 포카드 완성
+      hole: [c('hearts', 6), c('diamonds', 6), c('clubs', 9)],
+      augments: [byId('aug_flush_boost'), byId('aug_allin_snipe')],
+      isAllIn: true,
+    };
+    const loser: Contender = {
+      id: 'B',
+      hole: [c('diamonds', 3), c('clubs', 4), c('spades', 8)],
+      augments: [],
+      isAllIn: false,
+    };
+
+    const payouts = runShowdown([winner, loser], evalCommunity, 1000);
+    assert.equal(payouts.length, 1);
+    assert.equal(payouts[0].id, 'A');
+    assert.equal(payouts[0].category, 'four_of_a_kind');
+    // 플러시 조건 증강(aug_flush_boost)은 미발동, 올인 조건 증강(aug_allin_snipe, 2배)만 적용되어야 한다
+    assert.equal(payouts[0].multiplier, 2);
+    assert.equal(payouts[0].payout, 2000);
+  });
 });

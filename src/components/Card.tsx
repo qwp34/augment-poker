@@ -10,6 +10,12 @@ interface CardProps {
   onClick?: () => void;
   /** 딜링 스태거 연출용 지연 (초) */
   dealDelay?: number;
+  /** 딜링 진입 방향(px) — 이 카드가 최종적으로 놓일 자리 기준, "어디서 날아왔는지"의
+   * 반대 방향 오프셋. 기본값(위에서 톡 떨어짐)은 좌/우 좌석에서는 부자연스러워
+   * 멀티플레이 마름모 좌석에서는 좌석 방향(테이블 중앙→좌석)에 맞게 전달한다. */
+  dealFrom?: { x?: number; y?: number };
+  /** 커뮤니티 카드 공개처럼 "뒤집히며" 나타나야 하는 경우 — 딜링 진입 모션에 Y축 회전을 더한다 */
+  flip?: boolean;
   /** 증강 효과로 이 카드가 방금 바뀐 순간 — 글로우 + 플립 펄스를 잠깐 재생한다 */
   changeFx?: boolean;
   /** 현재(또는 쇼다운) 최고 족보를 구성하는 카드 — 은은한 골드 하이라이트를 계속 표시 */
@@ -24,6 +30,8 @@ export function Card({
   clickable,
   onClick,
   dealDelay = 0,
+  dealFrom,
+  flip,
   changeFx,
   highlight,
 }: CardProps) {
@@ -51,8 +59,8 @@ export function Card({
   return (
     <motion.div
       className={`pcard pcard-${size} ${clickable ? 'pcard-clickable' : ''} ${highlight ? 'pcard-highlight-hand' : ''}`}
-      initial={{ y: -46, opacity: 0, scale: 0.6 }}
-      animate={{ y: 0, opacity: 1, scale: 1 }}
+      initial={{ x: dealFrom?.x ?? 0, y: dealFrom?.y ?? -46, opacity: 0, scale: 0.6, rotateY: flip ? 90 : 0 }}
+      animate={{ x: 0, y: 0, opacity: 1, scale: 1, rotateY: 0 }}
       transition={{ delay: dealDelay, type: 'spring', stiffness: 320, damping: 22 }}
       onClick={onClick}
       role={clickable ? 'button' : undefined}

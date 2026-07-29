@@ -3,7 +3,10 @@ import { motion } from 'framer-motion';
 import { useMultiplayerRoom } from '../net/useMultiplayerRoom';
 import { AugmentSelectScreen } from './AugmentSelectScreen';
 import { AugmentTargetScreen } from './AugmentTargetScreen';
+import { BottomDealPrompt } from './BottomDealPrompt';
 import { PokerTable } from './PokerTable';
+import { SoundToggleButton } from './SoundToggleButton';
+import { playSound } from '../utils/sounds';
 
 export function MultiplayerLobby({ onClose }: { onClose: () => void }) {
   const [name, setName] = useState('');
@@ -30,6 +33,10 @@ export function MultiplayerLobby({ onClose }: { onClose: () => void }) {
     skipAugmentTarget,
     lastAugmentReveal,
     cardChangeEvent,
+    pendingBottomDealChoice,
+    chooseBottomDeal,
+    resetBoard,
+    noticeEvent,
   } = useMultiplayerRoom(name);
 
   // 서버 거부 메시지(방장 아님, 잘못된 레이즈 금액 등)는 화면에 상관없이 토스트로 띄운다
@@ -55,37 +62,81 @@ export function MultiplayerLobby({ onClose }: { onClose: () => void }) {
 
   // augment_select phase에 막 들어서면 곧바로 선택 UI를 덮어씌우지 않고, 약 3초간 직전
   // 핸드/테이블을 그대로 보여준 뒤(증강 선택 UI 없이) 선택 화면을 띄운다.
+  // 단, 게임 시작 직후 첫 라운드(아직 보여줄 직전 핸드가 없음)에는 3초씩이나 기다릴 필요는
+  // 없지만, 완전히 즉시 뜨면 너무 갑작스러우니 짧게 0.5초만 뜸을 들인 후 띄운다.
   const [augmentUiReady, setAugmentUiReady] = useState(false);
   useEffect(() => {
     if (phase !== 'augment_select') {
       setAugmentUiReady(false);
       return;
     }
-    const t = setTimeout(() => setAugmentUiReady(true), 3000);
+    const waitMs = gameState?.round === 1 ? 500 : 3000;
+    const t = setTimeout(() => setAugmentUiReady(true), waitMs);
     return () => clearTimeout(t);
-  }, [phase]);
+  }, [phase, gameState?.round]);
 
   const showAugmentScreen = phase === 'augment_select' && augmentUiReady;
   const showTable = phase !== 'waiting' && phase !== 'gameOver' && !showAugmentScreen;
 
   const handleStartGame = () => {
+    playSound('buttonClick');
     setActionError('');
     room?.send('startGame');
   };
 
-  const handleCopy = async () => {
+  const fallbackCopy = (text: string) => {
+    const textarea = document.createElement('textarea');
+    textarea.value = text;
+    // 화면에 보이지 않게 배치하되 focus/select는 가능해야 한다
+    textarea.style.position = 'fixed';
+    textarea.style.top = '-9999px';
+    textarea.style.left = '-9999px';
+    document.body.appendChild(textarea);
+    textarea.focus();
+    textarea.select();
+    let succeeded = false;
     try {
-      await navigator.clipboard.writeText(shareUrl);
+      succeeded = document.execCommand('copy');
+    } catch (err) {
+      console.error('[MultiplayerLobby] execCommand copy 실패:', err);
+    }
+    document.body.removeChild(textarea);
+    return succeeded;
+  };
+
+  const handleCopy = async () => {
+    playSound('buttonClick');
+    // HTTPS(또는 localhost)가 아닌 환경(예: 로컬 네트워크 IP로 접속한 http)에서는
+    // navigator.clipboard 자체가 존재하지 않거나 호출이 거부될 수 있다.
+    if (navigator.clipboard?.writeText) {
+      try {
+        await navigator.clipboard.writeText(shareUrl);
+        setCopied(true);
+        setTimeout(() => setCopied(false), 1500);
+        return;
+      } catch (err) {
+        console.error('[MultiplayerLobby] navigator.clipboard.writeText 실패, fallback 시도:', err);
+      }
+    }
+    if (fallbackCopy(shareUrl)) {
       setCopied(true);
       setTimeout(() => setCopied(false), 1500);
-    } catch {
-      // 클립보드 API 미지원 시 무시 — 링크 입력창에서 직접 복사 가능
+    } else {
+      setActionError('복사에 실패했습니다. 링크 입력창에서 직접 복사해주세요.');
     }
   };
 
   return (
     <div className="mp-shell">
-      <button className="mp-close" onClick={onClose} aria-label="닫기">
+      <SoundToggleButton />
+      <button
+        className="mp-close"
+        onClick={() => {
+          playSound('buttonClick');
+          onClose();
+        }}
+        aria-label="닫기"
+      >
         ✕
       </button>
 
@@ -117,7 +168,13 @@ export function MultiplayerLobby({ onClose }: { onClose: () => void }) {
               </div>
             </>
           )}
-          <button className="gold-btn gold-btn-large" onClick={onClose}>
+          <button
+            className="gold-btn gold-btn-large"
+            onClick={() => {
+              playSound('buttonClick');
+              onClose();
+            }}
+          >
             처음으로
           </button>
         </div>
@@ -131,8 +188,10 @@ export function MultiplayerLobby({ onClose }: { onClose: () => void }) {
           lastResult={lastResult}
           augmentReveal={lastAugmentReveal}
           cardChangeEvent={cardChangeEvent}
+          noticeEvent={noticeEvent}
           onAction={sendAction}
           onSwapCard={swapHoleCard}
+          onResetBoard={resetBoard}
         />
       )}
 
@@ -160,11 +219,23 @@ export function MultiplayerLobby({ onClose }: { onClose: () => void }) {
                 onChange={(e) => setName(e.target.value)}
               />
               {roomId ? (
-                <button className="gold-btn gold-btn-large" onClick={() => joinById(roomId)}>
+                <button
+                  className="gold-btn gold-btn-large"
+                  onClick={() => {
+                    playSound('buttonClick');
+                    joinById(roomId);
+                  }}
+                >
                   입장하기
                 </button>
               ) : (
-                <button className="gold-btn gold-btn-large" onClick={() => create()}>
+                <button
+                  className="gold-btn gold-btn-large"
+                  onClick={() => {
+                    playSound('buttonClick');
+                    create();
+                  }}
+                >
                   새 방 만들기
                 </button>
               )}
@@ -176,7 +247,13 @@ export function MultiplayerLobby({ onClose }: { onClose: () => void }) {
           {status === 'error' && (
             <div className="mp-error-box">
               <p className="mp-error">{errorMessage}</p>
-              <button className="gold-btn" onClick={onClose}>
+              <button
+                className="gold-btn"
+                onClick={() => {
+                  playSound('buttonClick');
+                  onClose();
+                }}
+              >
                 처음으로
               </button>
             </div>
@@ -223,6 +300,9 @@ export function MultiplayerLobby({ onClose }: { onClose: () => void }) {
           onSkip={skipAugmentTarget}
         />
       )}
+
+      {/* 밑장빼기 — 플랍/턴/리버 공개 직전, 나에게만 사용 여부를 묻는 모달 */}
+      {pendingBottomDealChoice && <BottomDealPrompt onChoose={chooseBottomDeal} />}
 
       {actionError && <div className="mp-toast-error">{actionError}</div>}
     </div>

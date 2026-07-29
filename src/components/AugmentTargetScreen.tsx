@@ -6,6 +6,7 @@ import type { Augment } from '../engine/augmentEngine';
 import type { Card as EngineCard, Rank } from '../engine/types';
 import { RANKS, SUITS, SUIT_SYMBOLS, rankLabel } from '../engine/types';
 import type { AugmentTargetRequest, ClientCard } from '../net/useMultiplayerRoom';
+import { playSound } from '../utils/sounds';
 
 const AUGMENT_POOL = augmentsData as Augment[];
 
@@ -59,6 +60,11 @@ export function AugmentTargetScreen({ request, myHole, onSubmit, onSkip }: Augme
 
   // 현재 단계에서 "골랐지만 아직 확정하지 않은" 값 — 확인을 눌러야 실제로 반영된다
   const [draft, setDraft] = useState<string | number | null>(null);
+
+  const selectDraft = (value: string | number) => {
+    playSound('buttonClick');
+    setDraft(value);
+  };
 
   const needsOpponent = effectType === 'reveal_opponent_card' || effectType === 'swap_with_opponent';
   const step: Step =
@@ -144,7 +150,10 @@ export function AugmentTargetScreen({ request, myHole, onSubmit, onSkip }: Augme
             className="mp-target-skip"
             aria-label="이 증강 사용하지 않기"
             title="이번 핸드엔 사용 안 함"
-            onClick={onSkip}
+            onClick={() => {
+              playSound('buttonClick');
+              onSkip();
+            }}
           >
             ✕
           </button>
@@ -158,7 +167,7 @@ export function AugmentTargetScreen({ request, myHole, onSubmit, onSkip }: Augme
                 <button
                   key={o.sessionId}
                   className={`mp-target-choice-btn${draft === o.sessionId ? ' mp-target-selected' : ''}`}
-                  onClick={() => setDraft(o.sessionId)}
+                  onClick={() => selectDraft(o.sessionId)}
                 >
                   {o.name}
                 </button>
@@ -172,7 +181,7 @@ export function AugmentTargetScreen({ request, myHole, onSubmit, onSkip }: Augme
                 <button
                   key={idx}
                   className={`mp-target-card-btn${draft === idx ? ' mp-target-selected' : ''}`}
-                  onClick={() => setDraft(idx)}
+                  onClick={() => selectDraft(idx)}
                 >
                   <Card hidden size="sm" />
                   <span>{idx === 0 ? '첫 번째 카드' : '두 번째 카드'}</span>
@@ -187,7 +196,7 @@ export function AugmentTargetScreen({ request, myHole, onSubmit, onSkip }: Augme
                 <button
                   key={c.id}
                   className={`mp-target-card-btn${draft === idx ? ' mp-target-selected' : ''}`}
-                  onClick={() => setDraft(idx)}
+                  onClick={() => selectDraft(idx)}
                 >
                   <Card card={asEngineCard(c)} size="sm" />
                   <span>{idx === 0 ? '첫 번째 카드' : '두 번째 카드'}</span>
@@ -202,7 +211,7 @@ export function AugmentTargetScreen({ request, myHole, onSubmit, onSkip }: Augme
                 <button
                   key={r}
                   className={`mp-target-rank-btn${draft === r ? ' mp-target-selected' : ''}`}
-                  onClick={() => setDraft(r)}
+                  onClick={() => selectDraft(r)}
                 >
                   {rankLabel(r)}
                 </button>
@@ -218,7 +227,7 @@ export function AugmentTargetScreen({ request, myHole, onSubmit, onSkip }: Augme
                   className={`mp-target-suit-btn ${s === 'hearts' || s === 'diamonds' ? 'suit-red' : 'suit-black'}${
                     draft === s ? ' mp-target-selected' : ''
                   }`}
-                  onClick={() => setDraft(s)}
+                  onClick={() => selectDraft(s)}
                 >
                   {SUIT_SYMBOLS[s]}
                 </button>
@@ -226,7 +235,14 @@ export function AugmentTargetScreen({ request, myHole, onSubmit, onSkip }: Augme
             </div>
           )}
 
-          <button className="mp-target-confirm-btn" disabled={draft === null} onClick={handleConfirm}>
+          <button
+            className="mp-target-confirm-btn"
+            disabled={draft === null}
+            onClick={() => {
+              playSound('buttonClick');
+              handleConfirm();
+            }}
+          >
             확인
           </button>
         </motion.div>

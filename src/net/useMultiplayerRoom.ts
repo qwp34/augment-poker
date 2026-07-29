@@ -47,6 +47,12 @@ export interface ClientPlayer {
   hasActed: boolean;
   connected: boolean;
   swapUsed: boolean;
+  /** 밑장빼기 사용 여부 (라운드당 1회) */
+  bottomDealUsed: boolean;
+  /** 리셋 버튼 사용 여부 (라운드당 1회) */
+  resetBoardUsed: boolean;
+  /** 이번 핸드 홀카드 매수 — 평소 2, 대풍년 보유자가 있으면 전원 3 */
+  holeCount: number;
   lastAction: string;
   /** 쇼다운 전에는 항상 빈 배열 — 서버가 그 전까지는 아예 값을 보내지 않는다 */
   revealedHole: ClientCard[];
@@ -101,6 +107,14 @@ export interface ShowdownResult {
   byFold: boolean;
   winners: ResultWinner[];
   hands?: { sessionId: string; name: string; category: string }[];
+  /** 러시안 룰렛 발동 시 — 판정에서 제외된 커뮤니티 카드 id (연출용 X 표시) */
+  removedCommunityCardId?: string;
+}
+
+/** 서버가 보내는 짧은 시스템 알림(밑장빼기/보드 리셋 등) — 매번 새 id라 같은 문구라도 토스트가 다시 뜬다 */
+export interface NoticeEvent {
+  text: string;
+  id: number;
 }
 
 export interface GameOverInfo {
@@ -181,6 +195,9 @@ function toClientPlayer(p: {
   hasActed: boolean;
   connected: boolean;
   swapUsed: boolean;
+  bottomDealUsed: boolean;
+  resetBoardUsed: boolean;
+  holeCount: number;
   lastAction: string;
   revealedHole: Iterable<{ id: string; suit: string; rank: number; isJoker?: boolean }> | null | undefined;
   augmentIds: Iterable<string> | null | undefined;
@@ -198,6 +215,9 @@ function toClientPlayer(p: {
     hasActed: p.hasActed,
     connected: p.connected,
     swapUsed: p.swapUsed,
+    bottomDealUsed: p.bottomDealUsed,
+    resetBoardUsed: p.resetBoardUsed,
+    holeCount: p.holeCount,
     lastAction: p.lastAction,
     revealedHole: toArray(p.revealedHole).map(toClientCard),
     augmentIds: toArray(p.augmentIds),
@@ -257,6 +277,11 @@ export function useMultiplayerRoom(playerName: string) {
   const [lastAugmentReveal, setLastAugmentReveal] = useState<AugmentRevealInfo | null>(null);
   /** 카드가 바뀐 순간의 공개 브로드캐스트 — 매번 새 객체라 참조 변화만으로 연출 트리거에 충분하다 */
   const [cardChangeEvent, setCardChangeEvent] = useState<CardChangeEvent | null>(null);
+  /** 밑장빼기 — 내가 지금 "사용하시겠습니까?" 프롬프트에 응답해야 하는 상태인지 */
+  const [pendingBottomDealChoice, setPendingBottomDealChoice] = useState(false);
+  /** 서버의 짧은 시스템 알림(밑장빼기 사용/보드 리셋 등) — 토스트로 표시 */
+  const [noticeEvent, setNoticeEvent] = useState<NoticeEvent | null>(null);
+  const noticeIdRef = useRef(0);
 
   // 최신 닉네임을 콜백 의존성 없이 읽기 위한 ref (닉네임 입력 중 재렌더링돼도 콜백 identity가 안정적으로 유지되도록)
   const playerNameRef = useRef(playerName);
@@ -370,10 +395,26 @@ export function useMultiplayerRoom(playerName: string) {
     };
   }, [room]);
 
-  // 다음 핸드의 프리플랍이 시작되면 지난 핸드의 결과 배너는 더 이상 유효하지 않다
+  // 라운드 결과 화면(round_end)이 끝나고 다음 라운드로 넘어가면(증강 선택 단계부터) 지난
+  // 라운드의 결과 배너/러시안 룰렛 X 표시는 더 이상 유효하지 않다 — augment_select에서
+  // 클리어하지 않으면, community가 아직 startHand()로 비워지기 전이라(다음 라운드 증강
+  // 선택 중에도 서버 상태엔 직전 핸드의 보드가 그대로 남아있다) 쇼다운이 아닌 증강 선택
+  // 화면에서까지 이전 핸드의 X 표시가 계속 보이는 문제가 있었다.
   useEffect(() => {
-    if (gameState?.phase === 'preflop') setLastResult(null);
+    if (
+      gameState?.phase === 'augment_select' ||
+      gameState?.phase === 'augment_target' ||
+      gameState?.phase === 'preflop'
+    )
+      setLastResult(null);
   }, [gameState?.phase]);
+
+  // 안전장치 — 어떤 사유로든 위 조건에서 못 지워지더라도, 결과 배너는 일정 시간 뒤 무조건 사라진다
+  useEffect(() => {
+    if (!lastResult) return;
+    const t = setTimeout(() => setLastResult(null), 6000);
+    return () => clearTimeout(t);
+  }, [lastResult]);
 
   // 즉시형 증강(음침한 눈/카멜레온/당근이세요?) 대상 지정 요청 — 나에게만 온다.
   // 서버는 대상이 필요 없어질 때(해소·타임아웃)까지 phase를 'augment_target'에 둔다.
@@ -404,8 +445,8 @@ export function useMultiplayerRoom(playerName: string) {
     if (gameState?.phase === 'augment_select') setLastAugmentReveal(null);
   }, [gameState?.phase]);
 
-  // 카드가 바뀌는 증강(카드 재구성/카멜레온/당근이세요?) 발동 — 전원에게 오는 공개 브로드캐스트.
-  // 소비 측(PokerTable)이 이 값이 바뀔 때마다 글로우 연출 + 토스트를 새로 재생한다.
+  // 카드가 바뀌는 증강(카드 재구성/카멜레온/당근이세요?/흔들리는 테이블) 발동 — 전원에게
+  // 오는 공개 브로드캐스트. 소비 측(PokerTable)이 이 값이 바뀔 때마다 글로우 연출 + 토스트를 새로 재생한다.
   useEffect(() => {
     if (!room) {
       setCardChangeEvent(null);
@@ -414,6 +455,37 @@ export function useMultiplayerRoom(playerName: string) {
     const offCardChange = room.onMessage('cardChange', (payload: CardChangeEvent) => setCardChangeEvent(payload));
     return () => {
       offCardChange?.();
+    };
+  }, [room]);
+
+  // 밑장빼기 — 스트리트 공개 직전, 서버가 나에게만 "사용하시겠습니까?" 프롬프트를 보낸다
+  useEffect(() => {
+    if (!room) {
+      setPendingBottomDealChoice(false);
+      return;
+    }
+    const off = room.onMessage('bottomDealPrompt', () => setPendingBottomDealChoice(true));
+    return () => {
+      off?.();
+    };
+  }, [room]);
+
+  // street_reveal_choice를 벗어나면(응답 완료·타임아웃 자동 처리) 더 이상 물어볼 게 없다
+  useEffect(() => {
+    if (gameState?.phase !== 'street_reveal_choice') setPendingBottomDealChoice(false);
+  }, [gameState?.phase]);
+
+  // 서버의 짧은 시스템 알림(밑장빼기 사용/보드 리셋 등) — 전원에게 오는 토스트용 브로드캐스트
+  useEffect(() => {
+    if (!room) {
+      setNoticeEvent(null);
+      return;
+    }
+    const off = room.onMessage('notice', (payload: { text: string }) =>
+      setNoticeEvent({ text: payload.text, id: ++noticeIdRef.current }),
+    );
+    return () => {
+      off?.();
     };
   }, [room]);
 
@@ -465,6 +537,20 @@ export function useMultiplayerRoom(playerName: string) {
     [room],
   );
 
+  /** 밑장빼기 — "사용하시겠습니까?" 프롬프트에 응답 (사용/사용 안 함) */
+  const chooseBottomDeal = useCallback(
+    (use: boolean) => {
+      room?.send('bottomDealChoice', { use });
+      setPendingBottomDealChoice(false);
+    },
+    [room],
+  );
+
+  /** 리셋 버튼 — 본인 차례에 현재 커뮤니티 카드를 전부 회수하고 다시 딜링 요청 (라운드당 1회, 서버가 검증) */
+  const resetBoard = useCallback(() => {
+    room?.send('resetBoard');
+  }, [room]);
+
   const myPlayer = useMemo(
     () => gameState?.players.find((p) => p.sessionId === room?.sessionId) ?? null,
     [gameState, room],
@@ -494,5 +580,9 @@ export function useMultiplayerRoom(playerName: string) {
     skipAugmentTarget,
     lastAugmentReveal,
     cardChangeEvent,
+    pendingBottomDealChoice,
+    chooseBottomDeal,
+    resetBoard,
+    noticeEvent,
   };
 }

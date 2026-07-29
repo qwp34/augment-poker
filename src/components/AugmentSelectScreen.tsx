@@ -1,6 +1,7 @@
 import { motion } from 'framer-motion';
 import augmentsData from '../data/augments.json';
 import { RARITY_NAMES_KO, type Augment } from '../engine/augmentEngine';
+import { playSound } from '../utils/sounds';
 
 const AUGMENT_POOL = augmentsData as Augment[];
 
@@ -49,7 +50,10 @@ export function AugmentSelectScreen({ round, choices, onSelect }: AugmentSelectS
               initial={{ y: 60, opacity: 0, rotateY: 40 }}
               animate={{ y: 0, opacity: 1, rotateY: 0 }}
               transition={{ delay: 0.12 + i * 0.13, type: 'spring', stiffness: 240, damping: 20 }}
-              onClick={() => onSelect(augment.id)}
+              onClick={() => {
+                playSound('augmentSelect');
+                onSelect(augment.id);
+              }}
             >
               <span className="augment-rarity">{RARITY_NAMES_KO[augment.rarity]}</span>
               <h3 className="augment-name">{augment.name}</h3>
