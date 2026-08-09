@@ -37,7 +37,7 @@ const AUGMENT_POOL = augmentsData as Augment[];
 /** 게임 입장 바이인 겸 시작 스택 — 로그인 유저는 이 금액이 profiles.chips에서
  *  차감되고(부족하면 GREATEST로 먼저 채워짐, deduct_chips 참고), 게스트/봇은 그냥
  *  이 값으로 시작한다. */
-const START_STACK = 1000;
+const INITIAL_CHIPS = 5000;
 const SMALL_BLIND = 50;
 const BIG_BLIND = 100;
 const MAX_NAME_LENGTH = 8;
@@ -228,7 +228,7 @@ export class PokerRoom extends Room<PokerState> {
       throw new Error('로그인 세션이 만료되었습니다. 다시 로그인해주세요.');
     }
 
-    // deduct_chips는 잔액이 바이인(START_STACK)보다 적어도(0골드 포함) 먼저 그만큼
+    // deduct_chips는 잔액이 바이인(INITIAL_CHIPS)보다 적어도(0골드 포함) 먼저 그만큼
     // 채운 뒤 차감하므로(GREATEST) 이제 "칩 부족으로 입장 거부"라는 경우 자체가 없다 —
     // 항상 정확히 1행을 반환한다. 그래도 0행이 오거나 error가 나면(권한 오류·네트워크
     // 오류·존재하지 않는 유저 등 진짜 실패) 잔액 문제가 아니라 일시적 오류로 안내한다
@@ -236,7 +236,7 @@ export class PokerRoom extends Room<PokerState> {
     // denied로 실패했던 사례가 있었다 — 그때도 "칩 부족"으로 잘못 보고돼 원인 파악이 안 됐다).
     const { data: rows, error: deductError } = await supabaseAdmin.rpc('deduct_chips', {
       p_user_id: userData.user.id,
-      p_amount: START_STACK,
+      p_amount: INITIAL_CHIPS,
     });
     // 사용자에게 보여주는 문구는 일부러 뭉뚱그리지만("일시적인 오류"), 서버 콘솔에는
     // 항상 RPC 응답 전문을 그대로 남긴다 — 그래야 다음에 같은 문제가 나도 스크립트를
@@ -246,7 +246,7 @@ export class PokerRoom extends Room<PokerState> {
     //  2) supabase/schema.sql의 GREATEST 기반 마이그레이션을 아직 실행 안 한 경우
     //     → 옛 버전 deduct_chips가 "chips >= p_amount"에서 걸려 0행 반환(error 없음) —
     //     0골드/저잔액 계정에서만 재현되고 고잔액 계정에선 안 보여서 헷갈리기 쉽다.
-    console.log('[PokerRoom] deduct_chips 응답:', JSON.stringify({ userId: userData.user.id, amount: START_STACK, rows, error: deductError }, null, 2));
+    console.log('[PokerRoom] deduct_chips 응답:', JSON.stringify({ userId: userData.user.id, amount: INITIAL_CHIPS, rows, error: deductError }, null, 2));
     if (deductError) {
       console.error(
         '[PokerRoom] deduct_chips RPC 실패 — SUPABASE_SERVICE_ROLE_KEY가 올바른 service role(secret) 키인지 확인할 것:',
@@ -274,7 +274,7 @@ export class PokerRoom extends Room<PokerState> {
     // 로그인 유저는 서버가 확인한 프로필 닉네임을 그대로 쓴다 — 실제 칩이 걸린 신원을
     // 클라이언트가 보낸 임의의 표시 이름으로 대체(스푸핑)하지 못하게 한다.
     p.name = authed ? this.resolvePlayerName(authed.nickname) : this.resolvePlayerName(options?.name);
-    p.stack = START_STACK;
+    p.stack = INITIAL_CHIPS;
     // 게임이 이미 진행 중이면 이번 핸드는 관전, 다음 라운드부터 합류
     if (this.state.phase !== 'waiting') p.isFolded = true;
     this.state.players.set(client.sessionId, p);
@@ -337,7 +337,7 @@ export class PokerRoom extends Room<PokerState> {
       bot.seatIndex = seat;
       bot.isBot = true;
       bot.name = `AI 봇 ${seat + 1}`;
-      bot.stack = START_STACK;
+      bot.stack = INITIAL_CHIPS;
       this.state.players.set(bot.sessionId, bot);
       this.botPersonas.set(bot.sessionId, Math.random() < 0.5 ? 'aggressive' : 'cautious');
     }
@@ -1461,8 +1461,10 @@ export class PokerRoom extends Room<PokerState> {
    * 판에서 딴/잃은 만큼"이 된다. SettlementTracker가 세션당 정확히 한 번만 실행되게
    * 보장하므로 endGame()과 onLeave() 양쪽에서 호출해도 이중 정산되지 않는다.
    *
-   * 정산 결과가 정확히 0골드(완전히 파산)면 credit_chips가 그 자리에서 1000골드로
-   * 채워주고 bailout_granted:true를 돌려준다 — 이 경우 본인에게만 파산 구제 안내를 보낸다.
+   * 정산 결과가 정확히 0골드(완전히 파산)면 credit_chips가 그 자리에서 INITIAL_CHIPS(5000)
+   * 골드로 채워주고 bailout_granted:true를 돌려준다 — 이 경우 본인에게만 파산 구제 안내를
+   * 보낸다. 구제 금액 자체는 supabase/schema.sql의 credit_chips 함수에 하드코딩돼 있으니
+   * (SQL은 이 TS 상수를 참조할 수 없다) INITIAL_CHIPS를 바꾸면 그쪽도 같이 맞춰야 한다.
    *
    * Supabase 호출 실패는 로그만 남기고 삼킨다 — 정산 실패로 게임 종료 흐름 자체가
    * 막히면 안 되기 때문(최소 스코프에서 감수하는 잔여 리스크: 이 시점의 일시적 장애는
@@ -1482,7 +1484,7 @@ export class PokerRoom extends Room<PokerState> {
       const client = this.clients.find((c) => c.sessionId === sessionId);
       client?.send('chipsSettled', { chips: row.new_chips });
       if (row.bailout_granted) {
-        client?.send('notice', { text: '골드가 0이어서 1000골드를 채워드렸습니다' });
+        client?.send('notice', { text: `골드가 0이어서 ${INITIAL_CHIPS.toLocaleString()}골드를 채워드렸습니다` });
       }
     } catch (err) {
       console.error(`[PokerRoom] 칩 정산 실패 (sessionId=${sessionId}, userId=${userId}):`, err);

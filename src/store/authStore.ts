@@ -52,11 +52,15 @@ interface AuthState {
   signOut: () => Promise<void>;
   refreshProfile: () => Promise<void>;
   setChips: (chips: number) => void;
-  /** "게스트로 시작" 클릭 시 — 랜덤 id/닉네임에 1000골드를 채운 로컬 유저를 즉시 만든다 */
+  /** "게스트로 시작" 클릭 시 — 랜덤 id/닉네임에 INITIAL_CHIPS(5000)골드를 채운 로컬 유저를 즉시 만든다 */
   startGuest: () => void;
   /** 게스트 세션 종료(로그아웃) — 다시 타이틀 1단계로 돌아갈 때 호출 */
   clearGuest: () => void;
 }
+
+// 멀티플레이 바이인(server/src/rooms/PokerRoom.ts의 INITIAL_CHIPS)과 맞춘다 — 게스트는
+// Supabase profiles와 무관한 순수 로컬 표시값이라 여기 숫자를 맞추는 것 외의 의미는 없다.
+const INITIAL_CHIPS = 5000;
 
 function randomGuestNickname(): string {
   const suffix = Math.floor(1000 + Math.random() * 9000); // 4자리
@@ -147,7 +151,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       guest: {
         id: generateId(),
         nickname: randomGuestNickname(),
-        chips: 1000,
+        chips: INITIAL_CHIPS,
       },
     });
   },

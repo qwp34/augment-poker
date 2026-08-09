@@ -60,22 +60,24 @@ async function main() {
     log(`[3] deduct_chips(0, buyin=1000) →`, d3, e3);
     checks.push(['0골드여도 입장 거부 없이 성공(보충 후 차감, 결과 0)', !e3 && d3?.[0]?.new_chips === 0]);
 
-    // 4) 정산: 현재 0골드 상태에서 finalStack=0으로 정산 → 0+0=0 → 파산 구제로 1000 되어야 함
+    // 4) 정산: 현재 0골드 상태에서 finalStack=0으로 정산 → 0+0=0 → 파산 구제로 5000 되어야 함
+    //    (구제 금액은 supabase/schema.sql의 credit_chips에 하드코딩된 값 — 현재 5000,
+    //    서버 PokerRoom.ts의 INITIAL_CHIPS와 동일하게 맞춰져 있어야 한다)
     const { data: d4, error: e4 } = await admin.rpc('credit_chips', { p_user_id: userId, p_amount: 0 });
     log(`[4] credit_chips(0, finalStack=0) →`, d4, e4);
-    checks.push(['정산 결과 0골드면 즉시 1000골드로 파산 구제', !e4 && d4?.[0]?.new_chips === 1000 && d4?.[0]?.bailout_granted === true]);
+    checks.push(['정산 결과 0골드면 즉시 5000골드로 파산 구제', !e4 && d4?.[0]?.new_chips === 5000 && d4?.[0]?.bailout_granted === true]);
 
-    // 5) 파산 구제로 1000이 된 상태에서 finalStack=500 정산 → 1000+500=1500, 구제 없어야 함
+    // 5) 파산 구제로 5000이 된 상태에서 finalStack=500 정산 → 5000+500=5500, 구제 없어야 함
     const { data: d5, error: e5 } = await admin.rpc('credit_chips', { p_user_id: userId, p_amount: 500 });
-    log(`[5] credit_chips(1000, finalStack=500) →`, d5, e5);
-    checks.push(['0골드가 아니면 파산 구제가 발동하지 않음(1500, granted=false)', !e5 && d5?.[0]?.new_chips === 1500 && d5?.[0]?.bailout_granted === false]);
+    log(`[5] credit_chips(5000, finalStack=500) →`, d5, e5);
+    checks.push(['0골드가 아니면 파산 구제가 발동하지 않음(5500, granted=false)', !e5 && d5?.[0]?.new_chips === 5500 && d5?.[0]?.bailout_granted === false]);
 
     // 6) 완전히 잃은 경우: 300골드에서 finalStack=-300으로 정산(뻥튀기 없이 순수 소진 시뮬레이션)
-    //    → 300-300=0 → 파산 구제로 1000
+    //    → 300-300=0 → 파산 구제로 5000
     await setChips(userId, 300);
     const { data: d6, error: e6 } = await admin.rpc('credit_chips', { p_user_id: userId, p_amount: -300 });
     log(`[6] credit_chips(300, 완전소진 -300) →`, d6, e6);
-    checks.push(['완전히 잃어 0골드로 정산돼도 즉시 1000골드로 구제', !e6 && d6?.[0]?.new_chips === 1000 && d6?.[0]?.bailout_granted === true]);
+    checks.push(['완전히 잃어 0골드로 정산돼도 즉시 5000골드로 구제', !e6 && d6?.[0]?.new_chips === 5000 && d6?.[0]?.bailout_granted === true]);
   } finally {
     await admin.auth.admin.deleteUser(userId);
     log(`\n테스트 유저 삭제 완료: ${userId}`);

@@ -22,9 +22,10 @@ import augmentsData from '../data/augments.json';
 // 애초에 제시하지 않는다(고르고도 아무 일도 안 일어나는 "먹통 픽"을 막기 위함).
 const AUGMENT_POOL = (augmentsData as Augment[]).filter((a) => !needsTargetSelection(a));
 
-// 멀티플레이 바이인(1000)과 맞춘다 — 싱글플레이는 Supabase와 연동되지 않는 순수
-// 로컬 상태라 여기 숫자를 맞추는 것 외에 서버 측 반영은 없다(곧 삭제될 모드).
-const START_STACK = 1000;
+// 멀티플레이 바이인(server/src/rooms/PokerRoom.ts의 INITIAL_CHIPS)과 맞춘다 —
+// 싱글플레이는 Supabase와 연동되지 않는 순수 로컬 상태라 여기 숫자를 맞추는 것
+// 외에 서버 측 반영은 없다(곧 삭제될 모드).
+const INITIAL_CHIPS = 5000;
 const ANTE = 100;
 const MAX_ROUNDS = 5;
 const MAX_RAISES_PER_STREET = 4;
@@ -356,8 +357,8 @@ export const useGameStore = create<GameState>((set, get) => {
     playerHole: [],
     botHole: [],
     community: [],
-    playerStack: START_STACK,
-    botStack: START_STACK,
+    playerStack: INITIAL_CHIPS,
+    botStack: INITIAL_CHIPS,
     pot: 0,
     streetBets: { player: 0, bot: 0 },
     raisesThisStreet: 0,
@@ -375,8 +376,8 @@ export const useGameStore = create<GameState>((set, get) => {
     startGame: () => {
       set({
         round: 1,
-        playerStack: START_STACK,
-        botStack: START_STACK,
+        playerStack: INITIAL_CHIPS,
+        botStack: INITIAL_CHIPS,
         pot: 0,
         ownedAugments: [],
         outcome: null,
