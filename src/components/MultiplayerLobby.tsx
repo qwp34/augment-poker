@@ -10,12 +10,15 @@ import { SoundToggleButton } from './SoundToggleButton';
 import { playSound } from '../utils/sounds';
 
 export function MultiplayerLobby({ onClose }: { onClose: () => void }) {
-  const [name, setName] = useState('');
-  const [copied, setCopied] = useState(false);
-  const [actionError, setActionError] = useState('');
   const authUser = useAuthStore((s) => s.user);
   const authProfile = useAuthStore((s) => s.profile);
   const authAccessToken = useAuthStore((s) => s.session?.access_token);
+  const authGuest = useAuthStore((s) => s.guest);
+  // 게스트로 시작한 경우 타이틀에서 만든 닉네임을 기본값으로 채워준다 — 게스트도
+  // Supabase 세션이 없으므로(accessToken 미전송) 서버는 그대로 게스트로 취급한다.
+  const [name, setName] = useState(() => authGuest?.nickname ?? '');
+  const [copied, setCopied] = useState(false);
+  const [actionError, setActionError] = useState('');
   const {
     roomId,
     status,

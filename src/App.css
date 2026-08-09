@@ -340,29 +340,39 @@
 }
 
 /* 비로그인 상태 — "증강포커" 네온 액자(top:265~455px) 바로 아래, 클릭 힌트와 같은
-   가로 중심(640px)에 로그인 버튼을 띄운다. 로그인 전엔 클릭-입장 자체가 막혀 있어
-   (StageCanvas clickable=false) 이 버튼이 1단계에서 유일한 인터랙션 지점이다. */
-.title-splash-login-btn {
+   가로 중심(640px)에 로그인/게스트 버튼을 나란히 띄운다. 로그인 전엔 클릭-입장 자체가
+   막혀 있어(StageCanvas clickable=false) 이 두 버튼이 1단계에서 유일한 인터랙션 지점이다.
+   위치 보정(translateX(-50%))은 버튼 각각이 아니라 이 래퍼 하나에만 걸어서, 버튼이
+   늘어나도(로그인 1개 → 로그인+게스트 2개) 항상 두 버튼을 합친 폭 기준으로 중앙 정렬된다. */
+.title-splash-actions {
   position: absolute;
   left: 640px;
   top: 480px;
   transform: translateX(-50%);
   z-index: 5;
+  display: flex;
+  align-items: center;
+  gap: 14px;
 }
 
-/* .gold-btn:hover의 transform: translateY(-2px)가 이 버튼 고유의 위치 보정용
-   translateX(-50%)를 통째로 덮어써서, 호버 시 중앙 정렬이 깨지며 오른쪽으로
-   튕겨나가는 것처럼 보였다 — translateX(-50%)를 유지한 채 scale만 추가해 위치는
-   그대로 두고 살짝 커지기만 하도록 고정한다.
-   주의: 이전엔 `.title-splash-login-btn:hover` 단일 클래스 선택자로 덮으려 했는데,
-   `.gold-btn:hover`와 명시도(specificity)가 완전히 같아서(클래스 1개+가상클래스 1개)
-   CSS 캐스케이드가 "스타일시트에서 더 나중에 나온 규칙"을 이긴다 — 이 파일에서
-   `.gold-btn:hover`가 이 규칙보다 뒤에 있어서 실제로는 계속 `.gold-btn:hover`가
-   적용되고 있었다(순서에 의존하는 취약한 수정이었음). 두 클래스를 함께 써서
-   명시도를 `.gold-btn:hover`보다 확실히 높여, 스타일시트 순서와 무관하게 항상
-   이 규칙이 이기도록 고쳤다. */
-.gold-btn.title-splash-login-btn:hover {
-  transform: translateX(-50%) scale(1.05);
+/* 게스트 버튼은 실제 계정을 만드는 로그인과 달리 "부가 선택지"라, 골드 버튼(로그인)보다
+   존재감을 낮춘 고스트 스타일로 구분한다 */
+.title-splash-guest-btn {
+  border: 2px solid var(--text-dim);
+  border-radius: 8px;
+  padding: 11px 22px;
+  font-size: 0.95rem;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  color: #f4f4f6;
+  background: rgba(10, 20, 18, 0.55);
+  transition: filter 0.12s, transform 0.12s, border-color 0.12s;
+}
+
+.title-splash-guest-btn:hover {
+  filter: brightness(1.2);
+  transform: translateY(-2px);
+  border-color: #f4f4f6;
 }
 
 /* ── 2단계: 게임 시작 / 멀티플레이 버튼 ── */

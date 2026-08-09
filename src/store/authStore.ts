@@ -10,6 +10,10 @@
  * setChips()로 즉시 반영한다 — Supabase를 다시 읽어오면(refreshProfile) 서버의
  * credit_chips RPC가 아직 커밋되기 전 값을 먼저 받아올 레이스가 있어, 정산 직후
  * 갱신은 재조회가 아니라 서버가 보내주는 값을 그대로 신뢰한다.
+ *
+ * guest(개발용 게스트 모드)는 위 로그인 흐름과 완전히 분리된 별도 필드다 — Supabase
+ * session/user/profile은 전혀 건드리지 않고, 이 스토어 메모리에만 존재하는 로컬 유저
+ * 객체를 하나 더 들고 있을 뿐이다. startGuest()로 만들고 clearGuest()로 지운다.
  */
 import { create } from 'zustand';
 import type { Session, User } from '@supabase/supabase-js';
@@ -21,18 +25,42 @@ export interface AuthProfile {
   chips: number;
 }
 
+/**
+ * 개발용 게스트 모드 — Supabase 인증을 전혀 거치지 않는 순수 로컬 유저 객체.
+ * id/nickname/chips는 이 클라이언트 메모리에만 존재하고 어디에도 영속되지 않는다
+ * (새로고침하면 사라짐). 멀티플레이 입장 시 accessToken을 보내지 않으므로(useMultiplayerRoom
+ * 참고) 서버는 이 유저를 항상 게스트로 취급해 deduct_chips/credit_chips(칩 차감·정산)를
+ * 전부 건너뛴다 — 실제 로그인 유저와 달리 DB에 어떤 흔적도 남기지 않는다.
+ */
+export interface GuestUser {
+  id: string;
+  nickname: string;
+  chips: number;
+}
+
 interface AuthState {
   session: Session | null;
   user: User | null;
   profile: AuthProfile | null;
   /** 앱 시작 시 기존 세션 복원이 끝났는지 — 끝나기 전엔 로그인 UI를 깜빡이지 않도록 */
   authReady: boolean;
+  /** 게스트로 시작한 경우에만 값이 있다 — 실제 로그인(user/profile)과는 완전히 별개다 */
+  guest: GuestUser | null;
   init: () => void;
   signUp: (email: string, password: string, nickname: string) => Promise<{ error: string | null }>;
   signIn: (email: string, password: string) => Promise<{ error: string | null }>;
   signOut: () => Promise<void>;
   refreshProfile: () => Promise<void>;
   setChips: (chips: number) => void;
+  /** "게스트로 시작" 클릭 시 — 랜덤 id/닉네임에 1000골드를 채운 로컬 유저를 즉시 만든다 */
+  startGuest: () => void;
+  /** 게스트 세션 종료(로그아웃) — 다시 타이틀 1단계로 돌아갈 때 호출 */
+  clearGuest: () => void;
+}
+
+function randomGuestNickname(): string {
+  const suffix = Math.floor(1000 + Math.random() * 9000); // 4자리
+  return `플레이어${suffix}`;
 }
 
 async function fetchProfile(userId: string): Promise<AuthProfile | null> {
@@ -49,6 +77,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   user: null,
   profile: null,
   authReady: !supabase, // Supabase 자체가 미설정이면 복원할 세션도 없으니 곧바로 ready
+  guest: null,
 
   // App.tsx 최상위에서 한 번만 호출 — 기존 세션 복원 + 이후 로그인/로그아웃을 구독한다
   init: () => {
@@ -98,4 +127,16 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     const profile = get().profile;
     if (profile) set({ profile: { ...profile, chips } });
   },
+
+  startGuest: () => {
+    set({
+      guest: {
+        id: crypto.randomUUID(),
+        nickname: randomGuestNickname(),
+        chips: 1000,
+      },
+    });
+  },
+
+  clearGuest: () => set({ guest: null }),
 }));

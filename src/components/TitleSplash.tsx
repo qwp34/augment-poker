@@ -4,10 +4,12 @@ import { StageCanvas } from './StageCanvas';
 interface TitleSplashProps {
   /** 로그인 완료 상태에서만 쓰인다 — 아무 곳이나 클릭하면 2단계 메뉴로 전환 */
   onEnter: () => void;
-  /** 로그인 여부 — false면 클릭-입장 대신 로그인 버튼을 보여주고, 클릭 자체를 막는다 */
+  /** 로그인 여부 — false면 클릭-입장 대신 로그인/게스트 버튼을 보여주고, 클릭 자체를 막는다 */
   loggedIn: boolean;
   /** 로그인 버튼 클릭 시 로그인/회원가입 모달을 띄우기 위한 콜백 */
   onLoginClick: () => void;
+  /** "게스트로 시작" 버튼 클릭 시 — Supabase 인증 없이 로컬 게스트 유저를 만들고 곧바로 입장한다 */
+  onGuestClick: () => void;
 }
 
 const FRAME_LEFT = 320;
@@ -94,7 +96,7 @@ const RIGHT_FALL_CHIPS: { left: number; top: number; variant: 'gold' | 'red' | '
  * 레이어 순서(아래→위): 배경 장식(칩/카드) < 에이스 카드 < 네온 액자 < 스포트라이트.
  * 카드가 액자 뒤에서 살짝 삐져나오고, 스포트라이트는 반투명하게 맨 위에서 전체를 은은히 덮는다.
  */
-export function TitleSplash({ onEnter, loggedIn, onLoginClick }: TitleSplashProps) {
+export function TitleSplash({ onEnter, loggedIn, onLoginClick, onGuestClick }: TitleSplashProps) {
   const bulbs = useMemo(buildFrameBulbs, []);
 
   return (
@@ -162,16 +164,29 @@ export function TitleSplash({ onEnter, loggedIn, onLoginClick }: TitleSplashProp
       {loggedIn ? (
         <p className="title-splash-hint">시작하려면 아무곳이나 클릭하세요</p>
       ) : (
-        <button
-          type="button"
-          className="gold-btn title-splash-login-btn"
-          onClick={(e) => {
-            e.stopPropagation();
-            onLoginClick();
-          }}
-        >
-          로그인
-        </button>
+        <div className="title-splash-actions">
+          <button
+            type="button"
+            className="gold-btn title-splash-login-btn"
+            onClick={(e) => {
+              e.stopPropagation();
+              onLoginClick();
+            }}
+          >
+            로그인
+          </button>
+          {/* 개발용 게스트 모드 — Supabase 인증 없이 로컬 유저 객체만 만들어 바로 입장한다 */}
+          <button
+            type="button"
+            className="title-splash-guest-btn"
+            onClick={(e) => {
+              e.stopPropagation();
+              onGuestClick();
+            }}
+          >
+            게스트로 시작
+          </button>
+        </div>
       )}
 
       {/* 스포트라이트 — 반투명, 모든 요소 위 최상단 레이어 */}

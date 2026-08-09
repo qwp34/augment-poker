@@ -34,10 +34,15 @@ export default function App() {
   const authProfile = useAuthStore((s) => s.profile);
   const authInit = useAuthStore((s) => s.init);
   const authSignOut = useAuthStore((s) => s.signOut);
+  const authGuest = useAuthStore((s) => s.guest);
+  const startGuest = useAuthStore((s) => s.startGuest);
+  const clearGuest = useAuthStore((s) => s.clearGuest);
 
-  // 솔로/멀티 모두 로그인 필수 — Supabase가 아예 설정 안 된 개발 환경(isSupabaseConfigured
-  // false)에서만 예외로 게이트를 풀어 게스트로도 개발/테스트할 수 있게 한다.
-  const canEnterGame = !isSupabaseConfigured || !!authUser;
+  // 솔로/멀티 모두 로그인 필수 — 예외는 두 가지: ①Supabase가 아예 설정 안 된 개발
+  // 환경(isSupabaseConfigured false), ②"게스트로 시작"으로 로컬 게스트 유저를 만든 경우.
+  // 게스트는 Supabase 세션이 전혀 없으므로 멀티플레이 입장 시 accessToken도 보내지
+  // 않는다 — 서버가 항상 게스트로 취급해 칩 차감/정산(DB 저장)을 전부 건너뛴다.
+  const canEnterGame = !isSupabaseConfigured || !!authUser || !!authGuest;
 
   // Supabase 세션 복원/구독은 앱 전체에서 딱 한 번만 연결한다
   useEffect(() => {
@@ -140,6 +145,12 @@ export default function App() {
                   sfx.click();
                   setAuthModalOpen(true);
                 }}
+                onGuestClick={() => {
+                  sfx.click();
+                  startGuest();
+                  // 게스트는 별도 확인 절차가 없으니 로그인 모달 대신 바로 2단계로 진입
+                  setStage('menu');
+                }}
               />
             </motion.div>
           ) : (
@@ -163,11 +174,16 @@ export default function App() {
 
               <SettingsPanel
                 profileLabel={
-                  authUser && authProfile ? `${authProfile.nickname} · ${authProfile.chips.toLocaleString()} 골드` : undefined
+                  authUser && authProfile
+                    ? `${authProfile.nickname} · ${authProfile.chips.toLocaleString()} 골드`
+                    : authGuest
+                      ? `${authGuest.nickname} (게스트) · ${authGuest.chips.toLocaleString()} 골드`
+                      : undefined
                 }
-                chips={authUser && authProfile ? authProfile.chips : undefined}
+                chips={authUser && authProfile ? authProfile.chips : authGuest ? authGuest.chips : undefined}
                 onLogout={() => {
-                  authSignOut();
+                  if (authUser) authSignOut();
+                  if (authGuest) clearGuest();
                   // 로그아웃하면 타이틀(1단계) 비로그인 상태로 돌아간다
                   setStage('title');
                 }}
