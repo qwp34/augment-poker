@@ -155,7 +155,9 @@ npm install
 ### 2. 환경 변수
 
 ```bash
-# 클라이언트 — VITE_SERVER_URL (기본값 ws://localhost:2567)
+# 클라이언트 — VITE_SERVER_URL (비워두면 접속한 호스트명 기준으로 자동 결정 —
+# localhost로 열면 localhost:2567, LAN IP로 열면 같은 IP의 2567. 다른 기기에서
+# 접속할 걸 고려하면 이 값은 채우지 말고 주석 상태로 두는 걸 권장)
 cp .env.example .env
 
 # 서버 — PORT (기본값 2567)

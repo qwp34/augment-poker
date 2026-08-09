@@ -5,17 +5,17 @@ import { Client } from 'colyseus.js';
 export const ROOM_NAME = 'poker_room';
 
 /**
- * VITE_SERVER_URL이 없을 때의 기본값 — 'ws://localhost:2567'로 고정하면 LAN의 다른 기기에서
- * 접속했을 때 그 기기 자신의 localhost를 가리키게 되어 서버에 연결할 수 없다. 대신 지금 페이지를
- * 연 호스트명(window.location.hostname)을 그대로 재사용해 같은 서버로 자동 연결되게 한다 —
- * localhost로 열면 localhost:2567, LAN IP(예: 192.168.x.x:5173)로 열면 같은 IP의 2567로 연결된다.
+ * Colyseus 서버 엔드포인트 — VITE_SERVER_URL을 'ws://localhost:2567'로 고정하면 LAN의
+ * 다른 기기(예: 휴대폰이 http://192.168.x.x:5173으로 접속)에서는 그 기기 자신의
+ * localhost를 가리키게 되어 ERR_CONNECTION_REFUSED가 난다. VITE_SERVER_URL이 비어 있으면
+ * (.env에서 주석 처리된 경우 포함) 대신 지금 페이지를 연 호스트명(location.hostname)을
+ * 그대로 재사용해 같은 서버로 자동 연결되게 한다 — localhost로 열면 localhost:2567,
+ * LAN IP로 열면 같은 IP의 2567로 연결된다. 배포된 서버 등 정말 고정 주소가 필요할 때만
+ * .env의 VITE_SERVER_URL 값이 우선 적용된다.
  */
-function defaultServerUrl(): string {
-  const protocol = window.location.protocol === 'https:' ? 'wss' : 'ws';
-  return `${protocol}://${window.location.hostname}:2567`;
-}
-
-const SERVER_URL = import.meta.env.VITE_SERVER_URL || defaultServerUrl();
+const SERVER_URL =
+  import.meta.env.VITE_SERVER_URL ??
+  `${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.hostname}:2567`;
 
 export const client = new Client(SERVER_URL);
 

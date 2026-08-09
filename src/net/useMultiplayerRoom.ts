@@ -24,6 +24,9 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { MatchMakeError, type Room } from 'colyseus.js';
+// `client`(Colyseus Client 싱글톤, 접속 엔드포인트 결정 포함)는 이 훅에서만 쓰여서
+// colyseusClient.ts에 만들어두고 여기서 가져다 쓴다 — 엔드포인트를 localhost로
+// 고정하지 않는 이유는 colyseusClient.ts의 SERVER_URL 주석 참고.
 import { client, ROOM_NAME, buildRoomShareUrl, getRoomIdFromPath, pushRoomPath } from './colyseusClient';
 import { useAuthStore } from '../store/authStore';
 
