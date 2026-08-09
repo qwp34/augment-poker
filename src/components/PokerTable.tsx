@@ -204,8 +204,11 @@ function DiamondSeat({
 }: DiamondSeatProps) {
   // 폴드한 플레이어/아직 순서가 오지 않은 상대는 revealedHole이 있어도 EMPTY_HOLE로 취급해
   // 뒷면을 유지한다 — 자리마다 카드 개수가 들쭉날쭉해지지 않아 그 아래/옆의 증강 뱃지 위치도 안정적이다.
+  // isFolded는 별도로 한 번 더 확인한다 — revealedForShowdown이 폴백 규칙(연출이 이 라운드를
+  // 다루지 않을 때 즉시 공개)으로 true가 되는 경우에도, 폴드한 플레이어의 카드는 쇼다운
+  // 참가자가 아니므로 절대 앞면으로 보이면 안 된다(정보 박스는 그대로, 카드만 뒷면 유지).
   const holeCards: ClientCard[] =
-    isMe || revealedForShowdown ? (isMe ? myHole : player.revealedHole) : EMPTY_HOLE;
+    isMe || (revealedForShowdown && !player.isFolded) ? (isMe ? myHole : player.revealedHole) : EMPTY_HOLE;
   const bestFiveIds = useMemo(() => computeBestFiveIds(holeCards, community), [holeCards, community]);
   const dealFrom = SEAT_DIR[diamondSlot];
 
