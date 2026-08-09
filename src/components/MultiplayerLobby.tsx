@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
 import { useMultiplayerRoom } from '../net/useMultiplayerRoom';
+import { useAuthStore } from '../store/authStore';
 import { AugmentSelectScreen } from './AugmentSelectScreen';
 import { AugmentTargetScreen } from './AugmentTargetScreen';
 import { BottomDealPrompt } from './BottomDealPrompt';
@@ -12,6 +13,9 @@ export function MultiplayerLobby({ onClose }: { onClose: () => void }) {
   const [name, setName] = useState('');
   const [copied, setCopied] = useState(false);
   const [actionError, setActionError] = useState('');
+  const authUser = useAuthStore((s) => s.user);
+  const authProfile = useAuthStore((s) => s.profile);
+  const authAccessToken = useAuthStore((s) => s.session?.access_token);
   const {
     roomId,
     status,
@@ -36,9 +40,11 @@ export function MultiplayerLobby({ onClose }: { onClose: () => void }) {
     pendingBottomDealChoice,
     chooseBottomDeal,
     resetBoard,
+    extendTurnTimer,
+    turnExtendedEvent,
     noticeEvent,
     bigAnnouncement,
-  } = useMultiplayerRoom(name);
+  } = useMultiplayerRoom(name, authAccessToken);
 
   // 서버 거부 메시지(방장 아님, 잘못된 레이즈 금액 등)는 화면에 상관없이 토스트로 띄운다
   useEffect(() => {
@@ -166,6 +172,11 @@ export function MultiplayerLobby({ onClose }: { onClose: () => void }) {
                     {!s.connected ? ' (퇴장)' : ''}
                   </p>
                 ))}
+                {/* 로그인 유저 — 서버가 endGame()에서 profiles.chips 정산을 마치자마자
+                    'chipsSettled'로 보내준 값이 이미 authStore에 반영돼 있다 */}
+                {authUser && authProfile && (
+                  <p className="mp-hint">정산된 보유 칩: {authProfile.chips.toLocaleString()} 골드</p>
+                )}
               </div>
             </>
           )}
@@ -191,9 +202,11 @@ export function MultiplayerLobby({ onClose }: { onClose: () => void }) {
           cardChangeEvent={cardChangeEvent}
           noticeEvent={noticeEvent}
           bigAnnouncement={bigAnnouncement}
+          turnExtendedEvent={turnExtendedEvent}
           onAction={sendAction}
           onSwapCard={swapHoleCard}
           onResetBoard={resetBoard}
+          onExtendTurnTimer={extendTurnTimer}
         />
       )}
 
@@ -212,14 +225,24 @@ export function MultiplayerLobby({ onClose }: { onClose: () => void }) {
 
           {status === 'idle' && (
             <div className="mp-form">
-              {roomId && <p className="mp-hint">닉네임을 정하고 이 방에 입장하세요.</p>}
-              <input
-                className="mp-input"
-                placeholder="닉네임 (미입력 시 자동 배정, 최대 8자)"
-                maxLength={8}
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-              />
+              {authUser ? (
+                // 로그인 상태면 실제 칩이 걸린 신원(서버가 확인한 프로필 닉네임)으로만
+                // 입장한다 — 자유 입력 닉네임으로 바꿔치기(스푸핑)할 수 없게 막는다.
+                <p className="mp-hint">
+                  {authProfile ? `${authProfile.nickname}님으로 입장합니다` : '로그인 정보를 불러오는 중...'}
+                </p>
+              ) : (
+                <>
+                  {roomId && <p className="mp-hint">닉네임을 정하고 이 방에 입장하세요.</p>}
+                  <input
+                    className="mp-input"
+                    placeholder="닉네임 (미입력 시 자동 배정, 최대 8자)"
+                    maxLength={8}
+                    value={name}
+                    onChange={(e) => setName(e.target.value)}
+                  />
+                </>
+              )}
               {roomId ? (
                 <button
                   className="gold-btn gold-btn-large"

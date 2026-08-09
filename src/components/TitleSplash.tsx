@@ -2,7 +2,12 @@ import { useMemo, type CSSProperties } from 'react';
 import { StageCanvas } from './StageCanvas';
 
 interface TitleSplashProps {
+  /** 로그인 완료 상태에서만 쓰인다 — 아무 곳이나 클릭하면 2단계 메뉴로 전환 */
   onEnter: () => void;
+  /** 로그인 여부 — false면 클릭-입장 대신 로그인 버튼을 보여주고, 클릭 자체를 막는다 */
+  loggedIn: boolean;
+  /** 로그인 버튼 클릭 시 로그인/회원가입 모달을 띄우기 위한 콜백 */
+  onLoginClick: () => void;
 }
 
 const FRAME_LEFT = 320;
@@ -89,11 +94,11 @@ const RIGHT_FALL_CHIPS: { left: number; top: number; variant: 'gold' | 'red' | '
  * 레이어 순서(아래→위): 배경 장식(칩/카드) < 에이스 카드 < 네온 액자 < 스포트라이트.
  * 카드가 액자 뒤에서 살짝 삐져나오고, 스포트라이트는 반투명하게 맨 위에서 전체를 은은히 덮는다.
  */
-export function TitleSplash({ onEnter }: TitleSplashProps) {
+export function TitleSplash({ onEnter, loggedIn, onLoginClick }: TitleSplashProps) {
   const bulbs = useMemo(buildFrameBulbs, []);
 
   return (
-    <StageCanvas onClick={onEnter} clickable>
+    <StageCanvas onClick={loggedIn ? onEnter : undefined} clickable={loggedIn}>
       <div className="title-splash-fx" aria-hidden="true">
         {SIDE_CHIPS.map((c, i) => (
           <div
@@ -154,7 +159,20 @@ export function TitleSplash({ onEnter }: TitleSplashProps) {
         </div>
       </div>
 
-      <p className="title-splash-hint">시작하려면 아무곳이나 클릭하세요</p>
+      {loggedIn ? (
+        <p className="title-splash-hint">시작하려면 아무곳이나 클릭하세요</p>
+      ) : (
+        <button
+          type="button"
+          className="gold-btn title-splash-login-btn"
+          onClick={(e) => {
+            e.stopPropagation();
+            onLoginClick();
+          }}
+        >
+          로그인
+        </button>
+      )}
 
       {/* 스포트라이트 — 반투명, 모든 요소 위 최상단 레이어 */}
       <div className="spotlight" aria-hidden="true" />

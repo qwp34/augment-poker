@@ -12,6 +12,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@supabase/supabase-js": "^2.111.0",
     "colyseus.js": "^0.16.22",
     "framer-motion": "^12.42.2",
     "gsap": "^3.15.0",

@@ -12,7 +12,11 @@ export type SoundName =
   | 'win'
   | 'augmentSelect'
   | 'cardSwap'
-  | 'myTurn';
+  | 'myTurn'
+  | 'showdownSting'
+  | 'tick'
+  | 'rouletteAlarm'
+  | 'gunshot';
 
 const STORAGE_KEY = 'augment-poker:soundEnabled';
 
@@ -151,6 +155,27 @@ const SOUND_PLAYERS: Record<SoundName, (ac: AudioContext) => void> = {
   myTurn: (ac) => {
     tone(ac, 784, 0.16, 'sine', 0.045);
     tone(ac, 988, 0.22, 'sine', 0.04, 0.12);
+  },
+
+  // 쇼다운 임팩트 — "SHOW DOWN" 텍스트 등장 순간의 강한 타격음(저음 임팩트 + 짧은 금속성 스윕)
+  showdownSting: (ac) => {
+    tone(ac, 130, 0.3, 'sawtooth', 0.07);
+    noiseSweep(ac, 0.2, 4000, 800, 0.05, 0.02);
+  },
+
+  // 러시안 룰렛 카운트다운 — "째깍" 시계 초침
+  tick: (ac) => tone(ac, 1900, 0.045, 'square', 0.045),
+
+  // 러시안 룰렛 발동 — 다급한 사이렌풍 두 음
+  rouletteAlarm: (ac) => {
+    tone(ac, 220, 0.35, 'sawtooth', 0.075);
+    tone(ac, 175, 0.4, 'sawtooth', 0.065, 0.08);
+  },
+
+  // 총성 — 낮은 충격 임팩트 + 고음에서 저음으로 빠르게 스치는 노이즈
+  gunshot: (ac) => {
+    noiseSweep(ac, 0.18, 3200, 200, 0.09);
+    tone(ac, 90, 0.28, 'sawtooth', 0.08, 0, 35);
   },
 };
 

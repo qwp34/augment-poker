@@ -10,7 +10,10 @@ import {
   needsTargetSelection,
   isOneShotAugment,
   collectHandStartTargetQueue,
+  rollAugmentChoices,
+  rarityWeightsForRound,
   type Augment,
+  type AugmentRarity,
   type ShowdownContext,
 } from './augmentEngine';
 
@@ -34,6 +37,9 @@ const royalProphecy = byId('aug_royal_prophecy'); // on_shuffle — 쇼다운 �
 const sinisterEye = byId('aug_sinister_eye'); // 음침한 눈 — reveal_opponent_card, on_hand_start
 const chameleon = byId('aug_chameleon'); // 카멜레온 — edit_own_card, on_pick(일회성)
 const carrot = byId('aug_carrot'); // 당근이세요? — swap_with_opponent, on_hand_start
+const callingShot = byId('aug_calling_shot'); // 예고 홈런 — declare_hand, on_hand_start(매 핸드 재발동)
+const prismBill = byId('aug_prism_bill'); // 프리즘 청구서 — freeze_gold_quest, on_pick(부수효과는 PokerRoom 전용)
+const deepThink = byId('aug_deep_think'); // 장고의 시간 — extend_timer, on_turn(게임당 1회는 PlayerState.deepThinkUsed로 관리)
 
 function card(suit: Card['suit'], rank: Card['rank'], id = `${suit}-${rank}`): Card {
   return { id, suit, rank };
@@ -105,14 +111,15 @@ describe('applyPayoutAugments — 쇼다운 배당 배율 적용', () => {
 });
 
 describe('needsTargetSelection — 대상 지정형 증강 판별', () => {
-  it('음침한 눈/카멜레온/당근이세요?는 대상 지정이 필요하다', () => {
+  it('음침한 눈/카멜레온/당근이세요?/예고 홈런은 대상 지정이 필요하다', () => {
     assert.equal(needsTargetSelection(sinisterEye), true);
     assert.equal(needsTargetSelection(chameleon), true);
     assert.equal(needsTargetSelection(carrot), true);
+    assert.equal(needsTargetSelection(callingShot), true);
   });
 
-  it('기존 5종은 대상 지정이 필요 없다', () => {
-    for (const a of [flushBoost, cardSwap, allinSnipe, goldenFlip, royalProphecy]) {
+  it('기존 5종 + 프리즘 청구서/장고의 시간은 대상 지정이 필요 없다', () => {
+    for (const a of [flushBoost, cardSwap, allinSnipe, goldenFlip, royalProphecy, prismBill, deepThink]) {
       assert.equal(needsTargetSelection(a), false, `${a.name}은 대상 지정형이 아니어야 함`);
     }
   });
@@ -157,9 +164,13 @@ describe('isOneShotAugment — 일회성(on_pick) 증강 판별', () => {
   });
 
   it('음침한 눈/당근이세요?를 포함한 나머지는 일회성이 아니다(매 핸드 재발동)', () => {
-    for (const a of [flushBoost, cardSwap, allinSnipe, goldenFlip, royalProphecy, sinisterEye, carrot]) {
+    for (const a of [flushBoost, cardSwap, allinSnipe, goldenFlip, royalProphecy, sinisterEye, carrot, callingShot, deepThink]) {
       assert.equal(isOneShotAugment(a), false, `${a.name}은 일회성이 아니어야 함`);
     }
+  });
+
+  it('프리즘 청구서는 trigger가 on_pick이라 isOneShotAugment 기준으로는 일회성으로 분류된다 (실제 소모 처리는 없음 — 선택 즉시 부수효과만 발동)', () => {
+    assert.equal(isOneShotAugment(prismBill), true);
   });
 });
 
@@ -240,5 +251,80 @@ describe('swapCards — 당근이세요? (상대와 카드 1장씩 교환)', () 
     // 서로 건드리지 않은 두 번째 카드는 각자 그대로
     assert.deepEqual(bAfter[1], bHole[1]);
     assert.deepEqual(aAfterSwap[1], aHoleAfterChameleon[1]);
+  });
+});
+
+describe('rarityWeightsForRound — 라운드별 등급 확률 테이블 조회', () => {
+  it('1~5라운드는 augmentRarityTable.json에 정의된 값을 그대로 반환한다', () => {
+    assert.deepEqual(rarityWeightsForRound(1), { silver: 0.7, gold: 0.25, prismatic: 0.05 });
+    assert.deepEqual(rarityWeightsForRound(5), { silver: 0.15, gold: 0.5, prismatic: 0.35 });
+  });
+
+  it('테이블에 정의되지 않은 라운드는 가장 가까운 정의된 라운드 값으로 고정(clamp)된다', () => {
+    assert.deepEqual(rarityWeightsForRound(0), rarityWeightsForRound(1));
+    assert.deepEqual(rarityWeightsForRound(99), rarityWeightsForRound(5));
+  });
+
+  it('라운드가 진행될수록 프리즘 비중이 단조 증가한다', () => {
+    const prismShares = [1, 2, 3, 4, 5].map((r) => rarityWeightsForRound(r).prismatic);
+    for (let i = 1; i < prismShares.length; i++) {
+      assert.ok(prismShares[i] > prismShares[i - 1], `${i}라운드 프리즘 비중이 이전보다 커야 함`);
+    }
+  });
+});
+
+describe('rollAugmentChoices — 라운드별 가중 등급 뽑기', () => {
+  it('요청한 개수만큼(풀이 충분하면) 서로 다른 증강을 반환한다', () => {
+    const choices = rollAugmentChoices(POOL, [], 3, 3);
+    assert.equal(choices.length, 3);
+    assert.equal(new Set(choices.map((c) => c.id)).size, 3);
+  });
+
+  it('이미 보유한 증강은 후보에서 제외된다', () => {
+    const owned = [flushBoost, cardSwap];
+    const choices = rollAugmentChoices(POOL, owned, 3, 10);
+    assert.ok(choices.every((c) => !owned.some((o) => o.id === c.id)));
+  });
+
+  it('특정 등급 풀이 비어 있으면(전부 이미 보유) 다른 등급에서 대체되어 에러 없이 count개가 나온다', () => {
+    const silverOnly = POOL.filter((a) => a.rarity === 'silver');
+    const owned = silverOnly; // 실버는 전부 보유 중 — 실버 풀이 텅 빈 상태
+    const choices = rollAugmentChoices(POOL, owned, 1, 3); // 1라운드(실버 70%)라도 대체돼야 함
+    assert.equal(choices.length, 3);
+    assert.ok(choices.every((c) => c.rarity !== 'silver'));
+  });
+
+  it('풀 자체가 count보다 적으면 있는 만큼만 반환한다(에러 없음)', () => {
+    const smallPool = [flushBoost, cardSwap];
+    const choices = rollAugmentChoices(smallPool, [], 3, 3);
+    assert.equal(choices.length, 2);
+  });
+
+  it('풀이 특정 등급뿐이면(프리즘 청구서 보상 등) 라운드와 무관하게 그 등급만 나온다', () => {
+    const prismaticOnly = POOL.filter((a) => a.rarity === 'prismatic');
+    const choices = rollAugmentChoices(prismaticOnly, [], 1, 3); // 1라운드는 프리즘 5%뿐이지만
+    assert.equal(choices.length, 3);
+    assert.ok(choices.every((c) => c.rarity === 'prismatic'));
+  });
+
+  it('통계적으로 라운드가 진행될수록 프리즘 등급 등장 빈도가 뚜렷하게 높아진다', () => {
+    const TRIALS = 3000;
+    const countByRarity = (round: number): Record<AugmentRarity, number> => {
+      const tally: Record<AugmentRarity, number> = { silver: 0, gold: 0, prismatic: 0 };
+      for (let i = 0; i < TRIALS; i++) {
+        for (const c of rollAugmentChoices(POOL, [], round, 3)) tally[c.rarity]++;
+      }
+      return tally;
+    };
+
+    const round1 = countByRarity(1);
+    const round5 = countByRarity(5);
+    const round1PrismShare = round1.prismatic / (TRIALS * 3);
+    const round5PrismShare = round5.prismatic / (TRIALS * 3);
+
+    // 목표 확률은 5% vs 35% — 통계적 노이즈를 감안해 널널한 임계값으로 순서/격차만 확인
+    assert.ok(round1PrismShare < 0.12, `1라운드 프리즘 비율이 너무 높음: ${round1PrismShare}`);
+    assert.ok(round5PrismShare > 0.25, `5라운드 프리즘 비율이 너무 낮음: ${round5PrismShare}`);
+    assert.ok(round5PrismShare > round1PrismShare * 2, '5라운드 프리즘 비율이 1라운드보다 뚜렷하게 높아야 함');
   });
 });

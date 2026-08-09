@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useGameStore } from './store/gameStore';
+import { useAuthStore } from './store/authStore';
+import { isSupabaseConfigured } from './lib/supabaseClient';
 import { Card } from './components/Card';
 import { AugmentCard } from './components/AugmentCard';
 import { BettingPanel } from './components/BettingPanel';
@@ -11,6 +13,8 @@ import { MultiplayerLobby } from './components/MultiplayerLobby';
 import { TitleSplash } from './components/TitleSplash';
 import { MenuStage } from './components/MenuStage';
 import { ChipButton } from './components/ChipButton';
+import { AuthModal } from './components/AuthModal';
+import { SettingsPanel } from './components/SettingsPanel';
 import { findByEffect } from './engine/augmentEngine';
 import { evaluateBest } from './engine/handEvaluator';
 import { handLabel } from './ui/format';
@@ -25,6 +29,29 @@ export default function App() {
   const [started, setStarted] = useState(false);
   // 공유 링크(/room/:roomId)로 들어온 경우 곧바로 멀티플레이 로비를 연다
   const [multiplayerOpen, setMultiplayerOpen] = useState(() => !!getRoomIdFromPath());
+  const [authModalOpen, setAuthModalOpen] = useState(false);
+  const authUser = useAuthStore((s) => s.user);
+  const authProfile = useAuthStore((s) => s.profile);
+  const authInit = useAuthStore((s) => s.init);
+  const authSignOut = useAuthStore((s) => s.signOut);
+
+  // 솔로/멀티 모두 로그인 필수 — Supabase가 아예 설정 안 된 개발 환경(isSupabaseConfigured
+  // false)에서만 예외로 게이트를 풀어 게스트로도 개발/테스트할 수 있게 한다.
+  const canEnterGame = !isSupabaseConfigured || !!authUser;
+
+  // Supabase 세션 복원/구독은 앱 전체에서 딱 한 번만 연결한다
+  useEffect(() => {
+    authInit();
+  }, [authInit]);
+
+  // 공유 링크(/room/:roomId)로 들어왔는데 아직 로그인 전이면, 방으로 바로 들여보내는 대신
+  // 타이틀 화면(로그인 버튼)을 먼저 보여주고 로그인 모달을 자동으로 띄운다 — 로그인이
+  // 끝나 canEnterGame이 true가 되는 순간 아래 멀티플레이 진입 분기가 다시 평가되어
+  // 별도 조작 없이 곧바로 그 방으로 들어간다.
+  useEffect(() => {
+    if (multiplayerOpen && !canEnterGame) setAuthModalOpen(true);
+  }, [multiplayerOpen, canEnterGame]);
+
   const phase = useGameStore((s) => s.phase);
   const playerStack = useGameStore((s) => s.playerStack);
   const botStack = useGameStore((s) => s.botStack);
@@ -84,67 +111,89 @@ export default function App() {
     setMultiplayerOpen(false);
   };
 
-  // ── 멀티플레이 로비 (링크 공유 입장 / 방 생성) ──
-  if (multiplayerOpen) {
+  // ── 멀티플레이 로비 (링크 공유 입장 / 방 생성) — 로그인 전이면 아래 타이틀 화면으로
+  // 흘려보내 로그인부터 시키고, canEnterGame이 true가 되는 순간 여기서 바로 입장시킨다 ──
+  if (multiplayerOpen && canEnterGame) {
     return <MultiplayerLobby onClose={closeMultiplayer} />;
   }
 
   // ── 1단계(타이틀 스플래시) / 2단계(게임 시작·멀티플레이 메뉴) — 0.55초 페이드 전환 ──
   if (stage === 'title' || !started) {
     return (
-      <AnimatePresence>
-        {stage === 'title' ? (
-          <motion.div
-            key="title"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            transition={{ duration: 0.55 }}
-          >
-            <TitleSplash
-              onEnter={() => {
-                sfx.click();
-                setStage('menu');
-              }}
-            />
-          </motion.div>
-        ) : (
-          <motion.div
-            key="menu"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            transition={{ duration: 0.55 }}
-          >
-            <button
-              type="button"
-              className="back-to-title-btn"
-              onClick={() => {
-                sfx.click();
-                setStage('title');
-              }}
+      <>
+        <AnimatePresence>
+          {stage === 'title' ? (
+            <motion.div
+              key="title"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.55 }}
             >
-              ← 타이틀로 돌아가기
-            </button>
-            <MenuStage>
-              <ChipButton
-                title="게임 시작"
-                subtitle="혼자서 플레이"
-                onClick={() => {
+              <TitleSplash
+                loggedIn={canEnterGame}
+                onEnter={() => {
                   sfx.click();
-                  startGame();
-                  setStarted(true);
+                  setStage('menu');
+                }}
+                onLoginClick={() => {
+                  sfx.click();
+                  setAuthModalOpen(true);
                 }}
               />
-              <ChipButton
-                title="멀티플레이"
-                subtitle="친구와 함께"
-                onClick={() => setMultiplayerOpen(true)}
+            </motion.div>
+          ) : (
+            <motion.div
+              key="menu"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.55 }}
+            >
+              <button
+                type="button"
+                className="back-to-title-btn"
+                onClick={() => {
+                  sfx.click();
+                  setStage('title');
+                }}
+              >
+                ← 타이틀로 돌아가기
+              </button>
+
+              <SettingsPanel
+                profileLabel={
+                  authUser && authProfile ? `${authProfile.nickname} · ${authProfile.chips.toLocaleString()} 골드` : undefined
+                }
+                chips={authUser && authProfile ? authProfile.chips : undefined}
+                onLogout={() => {
+                  authSignOut();
+                  // 로그아웃하면 타이틀(1단계) 비로그인 상태로 돌아간다
+                  setStage('title');
+                }}
               />
-            </MenuStage>
-          </motion.div>
-        )}
-      </AnimatePresence>
+
+              <MenuStage>
+                <ChipButton
+                  title="게임 시작"
+                  subtitle="혼자서 플레이"
+                  onClick={() => {
+                    sfx.click();
+                    startGame();
+                    setStarted(true);
+                  }}
+                />
+                <ChipButton
+                  title="멀티플레이"
+                  subtitle="친구와 함께"
+                  onClick={() => setMultiplayerOpen(true)}
+                />
+              </MenuStage>
+            </motion.div>
+          )}
+        </AnimatePresence>
+        {authModalOpen && <AuthModal onClose={() => setAuthModalOpen(false)} />}
+      </>
     );
   }
 

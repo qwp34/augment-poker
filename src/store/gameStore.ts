@@ -22,7 +22,9 @@ import augmentsData from '../data/augments.json';
 // 애초에 제시하지 않는다(고르고도 아무 일도 안 일어나는 "먹통 픽"을 막기 위함).
 const AUGMENT_POOL = (augmentsData as Augment[]).filter((a) => !needsTargetSelection(a));
 
-const START_STACK = 5000;
+// 멀티플레이 바이인(1000)과 맞춘다 — 싱글플레이는 Supabase와 연동되지 않는 순수
+// 로컬 상태라 여기 숫자를 맞추는 것 외에 서버 측 반영은 없다(곧 삭제될 모드).
+const START_STACK = 1000;
 const ANTE = 100;
 const MAX_ROUNDS = 5;
 const MAX_RAISES_PER_STREET = 4;
@@ -86,8 +88,8 @@ function pushLog(log: string[], message: string): string[] {
 export const useGameStore = create<GameState>((set, get) => {
   /** 라운드 시작: 증강 선택지 제시 (남은 증강이 없으면 바로 핸드 시작) */
   function beginRound() {
-    const { ownedAugments } = get();
-    const choices = rollAugmentChoices(AUGMENT_POOL, ownedAugments, 3);
+    const { ownedAugments, round } = get();
+    const choices = rollAugmentChoices(AUGMENT_POOL, ownedAugments, round, 3);
     if (choices.length === 0) {
       startHand();
       return;

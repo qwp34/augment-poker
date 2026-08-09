@@ -13,7 +13,7 @@ import { PokerState, PlayerState, toCardSchema, type Phase } from '../schema/Pok
 import type { Card, Rank, Street, Suit } from '../engine/types';
 import { RANKS, SUITS } from '../engine/types';
 import { createDeck, shuffle } from '../engine/deck';
-import { evaluateBest, compareHands, type HandResult } from '../engine/handEvaluator';
+import { evaluateBest, compareHands, type HandResult, type HandCategory } from '../engine/handEvaluator';
 import {
   applyPayoutAugments,
   rollAugmentChoices,
@@ -28,17 +28,28 @@ import {
 } from '../engine/augmentEngine';
 import { decideBotAction, type BotDecision, type BotPersona } from '../engine/botAI';
 import { computeFixedBet, type FixedBetType } from '../engine/betSizing';
+import { SettlementTracker } from '../engine/settlement';
+import { supabaseAdmin, isSupabaseConfigured } from '../lib/supabaseAdmin';
 import augmentsData from '../data/augments.json';
 
 const AUGMENT_POOL = augmentsData as Augment[];
 
-const START_STACK = 5000;
+/** 게임 입장 바이인 겸 시작 스택 — 로그인 유저는 이 금액이 profiles.chips에서
+ *  차감되고(부족하면 GREATEST로 먼저 채워짐, deduct_chips 참고), 게스트/봇은 그냥
+ *  이 값으로 시작한다. */
+const START_STACK = 1000;
 const SMALL_BLIND = 50;
 const BIG_BLIND = 100;
 const MAX_NAME_LENGTH = 8;
 const MAX_ROUNDS = 5;
 const TURN_TIMEOUT_MS = 30_000;
-const AUGMENT_TIMEOUT_MS = 20_000;
+/** 증강 선택 — 20초는 자유롭게 고민(타이머 비표시), 이후 10초는 카운트다운 표시 후 자동 선택.
+ *  클라이언트(AugmentSelectScreen.tsx)가 같은 두 값을 그대로 미러링해 카운트다운을 근사
+ *  재현한다 — 실제 자동 선택 판정은 여기 서버 타이머가 유일한 기준이라 클라이언트가
+ *  조작할 수 없다. 두 파일의 상수를 바꿀 땐 항상 같이 맞춰야 한다. */
+const AUGMENT_THINK_MS = 20_000;
+const AUGMENT_COUNTDOWN_MS = 10_000;
+const AUGMENT_TIMEOUT_MS = AUGMENT_THINK_MS + AUGMENT_COUNTDOWN_MS;
 /**
  * 즉시형 증강(음침한 눈/카멜레온/당근이세요?) 대상 지정 제한시간 — 한 단계(예: 카멜레온의
  * "카드 선택"/"숫자 선택"/"무늬 선택" 중 하나)당 주어지는 시간. 예전엔 큐 전체에 15초
@@ -47,14 +58,42 @@ const AUGMENT_TIMEOUT_MS = 20_000;
  */
 const AUGMENT_TARGET_TIMEOUT_MS = 45_000;
 const RESULT_DELAY_MS = 5_000;
+/** 쇼다운 순차 공개 연출(클라이언트, PokerTable.tsx)이 다 재생될 시간을 벌어주는 지연 —
+ * 이 시간이 끝나야 beginRound()가 phase를 'augment_select'로 바꾸고, 그 phase 전환이
+ * 클라이언트의 결과 배너를 지운다(useMultiplayerRoom.ts). 클라이언트 연출 타임라인과
+ * 맞춰 여유를 두고 늘렸다 — 정확히 맞출 필요는 없고, 연출보다 짧지만 않으면 된다. */
+const SHOWDOWN_RESULT_DELAY_MS = 8_000;
+/** 러시안 룰렛이 발동한 쇼다운 — 순차 공개 연출 뒤에 원래 족보/카운트다운/총성 연출까지
+ * 이어지므로 훨씬 더 오래 걸린다. */
+const ROULETTE_RESULT_DELAY_MS = 15_000;
 const BOT_ACT_DELAY_MIN_MS = 600;
 const BOT_ACT_DELAY_MAX_MS = 1_400;
 /** 봇의 대상 지정형 증강 자동 처리 딜레이 — 여러 명이 몰려도 한 명씩 자연스럽게 순서대로 보이도록 */
 const BOT_TARGET_RESOLVE_DELAY_MIN_MS = 700;
 const BOT_TARGET_RESOLVE_DELAY_MAX_MS = 1_400;
+/** 프리즘 청구서 — 완료(퀘스트 목표) 기준은 동결액의 몇 배인지. 동결 20배 → 목표 40배(= 2배) */
+const PRISM_BILL_TARGET_MULTIPLIER = 2;
+/** 예고 홈런 — 선언한 족보 적중 시 보너스 배율(획득한 팟의 N배를 추가 지급) */
+const PROPHECY_BONUS_MULTIPLIER = 3;
+/** 예고 홈런 보너스 상한 — 팟이 매우 커진 상황에서 보너스 한 방에 게임이 끝나버리는 게
+ * 밸런스상 괜찮은지는 실제 플레이해보고 정한다. null이면 상한 없음(지금은 없음). */
+const PROPHECY_BONUS_CAP: number | null = null;
 
 /** 베팅 액션을 받는 phase 집합 — preflop/flop/turn/river 각각이 곧 스트리트다 */
 const BETTING_PHASES = new Set<Phase>(['preflop', 'flop', 'turn', 'river']);
+/** 예고 홈런 선언 가능 족보 목록 — handEvaluator의 HandCategory와 동일 순서(하이카드~로열플러시) */
+const HAND_CATEGORIES: HandCategory[] = [
+  'high_card',
+  'pair',
+  'two_pair',
+  'three_of_a_kind',
+  'straight',
+  'flush',
+  'full_house',
+  'four_of_a_kind',
+  'straight_flush',
+  'royal_flush',
+];
 
 type ActionMessage = { type?: unknown; amount?: unknown };
 
@@ -66,11 +105,20 @@ type AugmentTargetMessage = {
   cardIndex?: unknown;
   rank?: unknown;
   suit?: unknown;
+  /** 예고 홈런 — 선언할 목표 족보 */
+  handType?: unknown;
 };
 
 function toHoleIndex(value: unknown): HoleIndex | null {
   return value === 0 || value === 1 ? value : null;
 }
+
+/**
+ * onAuth()의 반환값 — Colyseus는 onAuth를 오버라이드하면 falsy 반환 시 무조건 입장을
+ * 거부한다(게스트 포함). 그래서 "인증 없음"도 별도의 truthy 값({guest:true})으로
+ * 표현해야 한다 — null/false를 반환하면 게스트 플레이 자체가 막혀버린다.
+ */
+type PokerAuth = { userId: string; nickname: string } | { guest: true };
 
 export class PokerRoom extends Room<PokerState> {
   maxClients = 4;
@@ -79,6 +127,11 @@ export class PokerRoom extends Room<PokerState> {
   private deck: Card[] = [];
   private holes = new Map<string, Card[]>();
   private board: Card[] = [];
+  /** 매 핸드(startHand)마다 1씩 증가 — 카드 id에 섞어 넣어 핸드 간 id 충돌을 막는다
+   *  (createDeck()의 id는 "suit-rank"뿐이라 다음 핸드에 같은 카드가 재등장하면 id가
+   *  그대로 겹친다. 러시안 룰렛으로 제외된 카드 id를 클라이언트가 그대로 들고 있다가
+   *  다음 핸드의 커뮤니티 카드와 우연히 id가 같아지면 엉뚱한 카드에 X가 뜨는 원인이 됐다) */
+  private handSeq = 0;
   /** 이번 라운드 각 플레이어에게 제시된 증강 선택지 (검증용 원본) */
   private pendingChoices = new Map<string, Augment[]>();
   /** 이번 라운드 시작 시점에 착석해 있던 플레이어 — 라운드 도중 합류한 인원은 다음 라운드부터 참여 */
@@ -102,6 +155,12 @@ export class PokerRoom extends Room<PokerState> {
   private targetPhaseOrder: string[] = [];
   /** startHand()에서 계산한 이번 핸드의 프리플랍 첫 액션 좌석 — augment_target을 거친 뒤에도 써야 해서 보관 */
   private handFirstActorSeat = -1;
+  /** 프리즘 청구서를 완료해 "다음 증강 선택은 프리즘만" 보상이 예약된 세션 id 집합 —
+   * beginRound()가 매 라운드 시작 시 한 번 소비(delete)하고 곧바로 잊는다. */
+  private prismBillRewardPending = new Set<string>();
+  /** 현재 턴이 자동으로 넘어가는 시각(ms epoch) — 장고의 시간으로 타이머를 연장할 때
+   * "지금까지 얼마나 남았는지"를 계산하는 기준이 된다. armTurnTimer()가 매번 갱신한다. */
+  private turnDeadline = 0;
 
   private turnTimer?: Delayed;
   private augmentTimer?: Delayed;
@@ -121,6 +180,9 @@ export class PokerRoom extends Room<PokerState> {
   private pendingStreetPhase: Phase | null = null;
   private pendingStreetDealCount = 0;
   private streetRevealPromptTimer?: Delayed;
+
+  /** 로그인 유저(sessionId → userId)가 게임당 정확히 한 번만 정산되도록 추적 */
+  private settlement = new SettlementTracker();
 
   onCreate() {
     this.state = new PokerState();
@@ -144,19 +206,80 @@ export class PokerRoom extends Room<PokerState> {
       this.handleBottomDealChoice(client, message),
     );
     this.onMessage('resetBoard', (client) => this.handleResetBoard(client));
+    this.onMessage('extendTurnTimer', (client) => this.handleExtendTurnTimer(client));
     this.onMessage('startGame', (client) => this.handleStartGame(client));
   }
 
-  onJoin(client: Client, options?: { name?: unknown; isBot?: unknown }) {
+  /**
+   * 로그인 유저의 신원 확인 + 바이인 차감 — onJoin보다 먼저 실행되며, Colyseus는 이
+   * 반환값이 falsy면 무조건 입장을 거부한다(게스트 포함) — 그래서 "인증 없음"도
+   * {guest:true}라는 truthy 값으로 표현한다.
+   *
+   * 검증(토큰) → 차감(RPC) → 반환 순서를 반드시 지킨다: 차감이 성공한 뒤에는 실패할
+   * 코드가 전혀 없어야 한다(단순 객체 리터럴 반환뿐) — 그래야 "차감은 됐는데 어디에도
+   * 기록되지 않아 환불 경로를 못 찾는" 상태가 생기지 않는다.
+   */
+  async onAuth(_client: Client, options?: { accessToken?: unknown }): Promise<PokerAuth> {
+    const token = typeof options?.accessToken === 'string' ? options.accessToken : '';
+    if (!isSupabaseConfigured || !token || !supabaseAdmin) return { guest: true };
+
+    const { data: userData, error: userError } = await supabaseAdmin.auth.getUser(token);
+    if (userError || !userData?.user) {
+      throw new Error('로그인 세션이 만료되었습니다. 다시 로그인해주세요.');
+    }
+
+    // deduct_chips는 잔액이 바이인(START_STACK)보다 적어도(0골드 포함) 먼저 그만큼
+    // 채운 뒤 차감하므로(GREATEST) 이제 "칩 부족으로 입장 거부"라는 경우 자체가 없다 —
+    // 항상 정확히 1행을 반환한다. 그래도 0행이 오거나 error가 나면(권한 오류·네트워크
+    // 오류·존재하지 않는 유저 등 진짜 실패) 잔액 문제가 아니라 일시적 오류로 안내한다
+    // (SUPABASE_SERVICE_ROLE_KEY가 실제로는 publishable/anon 키였을 때 매번 permission
+    // denied로 실패했던 사례가 있었다 — 그때도 "칩 부족"으로 잘못 보고돼 원인 파악이 안 됐다).
+    const { data: rows, error: deductError } = await supabaseAdmin.rpc('deduct_chips', {
+      p_user_id: userData.user.id,
+      p_amount: START_STACK,
+    });
+    // 사용자에게 보여주는 문구는 일부러 뭉뚱그리지만("일시적인 오류"), 서버 콘솔에는
+    // 항상 RPC 응답 전문을 그대로 남긴다 — 그래야 다음에 같은 문제가 나도 스크립트를
+    // 새로 짜서 재현할 필요 없이 로그만 보고 바로 원인을 알 수 있다. 실제로 겪은 두 원인:
+    //  1) SUPABASE_SERVICE_ROLE_KEY가 service role이 아니라 publishable/anon 키였던 경우
+    //     → error.code 42501 "permission denied for function deduct_chips"
+    //  2) supabase/schema.sql의 GREATEST 기반 마이그레이션을 아직 실행 안 한 경우
+    //     → 옛 버전 deduct_chips가 "chips >= p_amount"에서 걸려 0행 반환(error 없음) —
+    //     0골드/저잔액 계정에서만 재현되고 고잔액 계정에선 안 보여서 헷갈리기 쉽다.
+    console.log('[PokerRoom] deduct_chips 응답:', JSON.stringify({ userId: userData.user.id, amount: START_STACK, rows, error: deductError }, null, 2));
+    if (deductError) {
+      console.error(
+        '[PokerRoom] deduct_chips RPC 실패 — SUPABASE_SERVICE_ROLE_KEY가 올바른 service role(secret) 키인지 확인할 것:',
+        deductError,
+      );
+      throw new Error('일시적인 오류로 입장할 수 없습니다. 잠시 후 다시 시도해주세요.');
+    }
+    if (!rows || rows.length === 0) {
+      console.error(
+        '[PokerRoom] deduct_chips가 에러 없이 0행을 반환함 — GREATEST 기반 최신 SQL이 실제로 적용됐는지' +
+          ' Supabase SQL Editor에서 확인할 것(supabase/schema.sql 참고). 정상이라면 항상 1행을 반환해야 한다.',
+      );
+      throw new Error('일시적인 오류로 입장할 수 없습니다. 잠시 후 다시 시도해주세요.');
+    }
+    return { userId: userData.user.id, nickname: rows[0].nickname };
+  }
+
+  onJoin(client: Client, options?: { name?: unknown; isBot?: unknown }, auth?: PokerAuth) {
+    const authed = auth && 'userId' in auth ? auth : null;
+
     const p = new PlayerState();
     p.sessionId = client.sessionId;
     p.seatIndex = this.assignSeat();
     p.isBot = options?.isBot === true;
-    p.name = this.resolvePlayerName(options?.name);
+    // 로그인 유저는 서버가 확인한 프로필 닉네임을 그대로 쓴다 — 실제 칩이 걸린 신원을
+    // 클라이언트가 보낸 임의의 표시 이름으로 대체(스푸핑)하지 못하게 한다.
+    p.name = authed ? this.resolvePlayerName(authed.nickname) : this.resolvePlayerName(options?.name);
     p.stack = START_STACK;
     // 게임이 이미 진행 중이면 이번 핸드는 관전, 다음 라운드부터 합류
     if (this.state.phase !== 'waiting') p.isFolded = true;
     this.state.players.set(client.sessionId, p);
+
+    if (authed) this.settlement.track(client.sessionId, authed.userId);
 
     // 대기실에서 가장 먼저 들어온 사람이 방장 — "게임 시작"은 방장만 누를 수 있다
     if (this.state.phase === 'waiting' && !this.state.hostSessionId) {
@@ -220,7 +343,7 @@ export class PokerRoom extends Room<PokerState> {
     }
   }
 
-  onLeave(client: Client) {
+  async onLeave(client: Client) {
     const p = this.state.players.get(client.sessionId);
     if (!p) return;
     p.connected = false;
@@ -229,6 +352,10 @@ export class PokerRoom extends Room<PokerState> {
 
     const remaining = this.seatOrder().filter((o) => o.connected);
     if (this.state.phase === 'waiting' || this.state.phase === 'gameOver') {
+      // 'gameOver'면 endGame()에서 이미 정산이 끝났을 것(settlePlayer는 정확히 한 번만
+      // 실행되도록 SettlementTracker가 보장). 'waiting'이면 게임 시작 전 이탈이라
+      // 여기가 유일한 정산 지점 — 안 하면 입장 시 차감한 바이인이 그대로 증발한다.
+      await this.settlePlayer(client.sessionId, p.stack);
       this.state.players.delete(client.sessionId);
       if (this.state.hostSessionId === client.sessionId) {
         const next = this.seatOrder()[0];
@@ -248,7 +375,8 @@ export class PokerRoom extends Room<PokerState> {
         winner.stack += this.state.pot;
         this.state.pot = 0;
       }
-      return this.endGame('상대 퇴장');
+      await this.endGame('상대 퇴장');
+      return;
     }
     if (this.state.phase === 'augment_select') return this.checkAllChosen();
     if (this.state.phase === 'augment_target') {
@@ -285,7 +413,11 @@ export class PokerRoom extends Room<PokerState> {
     for (const p of this.seatOrder()) {
       p.augmentChoices.clear();
       if (!p.connected || p.stack <= 0) continue;
-      const choices = rollAugmentChoices(AUGMENT_POOL, this.ownedAugments(p), 3);
+      // 프리즘 청구서를 방금 완료한 보상 — 딱 이번 한 번만 프리즘 등급 증강 3개만 제시한다
+      const pool = this.prismBillRewardPending.delete(p.sessionId)
+        ? AUGMENT_POOL.filter((a) => a.rarity === 'prismatic')
+        : this.affordableAugmentPool(p);
+      const choices = rollAugmentChoices(pool, this.ownedAugments(p), this.state.round, 3);
       if (choices.length === 0) continue;
       anyChoices = true;
       this.pendingChoices.set(p.sessionId, choices);
@@ -299,6 +431,31 @@ export class PokerRoom extends Room<PokerState> {
     this.augmentTimer = this.clock.setTimeout(() => this.autoPickAugments(), AUGMENT_TIMEOUT_MS);
   }
 
+  /** 프리즘 청구서(선택 즉시 빅블라인드 20배 동결)를 감당할 수 없는 스택이면 애초에 선택지에서 뺀다 */
+  private affordableAugmentPool(p: PlayerState): Augment[] {
+    return AUGMENT_POOL.filter((a) => a.effect.type !== 'freeze_gold_quest' || p.stack >= this.prismBillFreezeAmount(a));
+  }
+
+  private prismBillFreezeAmount(augment: Augment): number {
+    return Math.round(this.state.bigBlind * augment.effect.value);
+  }
+
+  /**
+   * 증강을 실제로 획득(augmentIds에 추가)하는 공통 지점 — 대상 지정 없이 "고르는 즉시"
+   * 부수효과가 있는 증강(프리즘 청구서)을 여기서 함께 처리한다. affordableAugmentPool이
+   * 미리 걸러주므로 여기 도달했다는 것 자체가 이미 감당 가능한 금액이라는 뜻이다.
+   */
+  private grantAugment(p: PlayerState, augment: Augment) {
+    p.augmentIds.push(augment.id);
+    if (augment.effect.type === 'freeze_gold_quest') {
+      const freeze = this.prismBillFreezeAmount(augment);
+      p.stack -= freeze;
+      p.frozenGold = freeze;
+      p.frozenGoldTarget = freeze * PRISM_BILL_TARGET_MULTIPLIER;
+      p.frozenGoldProgress = 0;
+    }
+  }
+
   /**
    * 봇의 증강 선택 — 지금은 무작위, 추후 botAI 판단 로직과 함께 확장 가능.
    * 선택은 그저 보유 목록에 추가할 뿐, 효과는 여기서 발동하지 않는다 — 대상 지정이
@@ -307,7 +464,7 @@ export class PokerRoom extends Room<PokerState> {
    */
   private chooseAugmentForBot(p: PlayerState, choices: Augment[]) {
     const chosen = choices[Math.floor(Math.random() * choices.length)];
-    p.augmentIds.push(chosen.id);
+    this.grantAugment(p, chosen);
     p.augmentChoices.clear();
     this.pendingChoices.delete(p.sessionId);
   }
@@ -323,7 +480,7 @@ export class PokerRoom extends Room<PokerState> {
 
     const p = this.state.players.get(client.sessionId);
     if (!p) return;
-    p.augmentIds.push(chosen.id);
+    this.grantAugment(p, chosen);
     p.augmentChoices.clear();
     this.pendingChoices.delete(client.sessionId);
     this.checkAllChosen();
@@ -342,11 +499,16 @@ export class PokerRoom extends Room<PokerState> {
   }
 
   private autoPickAugments() {
+    // 시간 초과로 실제 누군가 자동 선택되는 경우에만 알린다 — checkAllChosen()이 전원
+    // 선택 완료 시 이 타이머를 이미 clear()하므로, 여기 도달했다는 것 자체가 곧 "적어도
+    // 한 명은 못 골랐다"는 뜻이다.
+    if (this.pendingChoices.size > 0) {
+      this.broadcast('notice', { text: '⏰ 시간 초과 — 첫 번째 증강이 선택되었습니다' });
+    }
     for (const [sessionId, choices] of this.pendingChoices) {
       const p = this.state.players.get(sessionId);
       if (p && choices.length > 0) {
-        const chosen = choices[0];
-        p.augmentIds.push(chosen.id);
+        this.grantAugment(p, choices[0]);
         p.augmentChoices.clear();
       }
     }
@@ -365,7 +527,8 @@ export class PokerRoom extends Room<PokerState> {
     st.community.clear();
     this.board = [];
     this.holes.clear();
-    this.deck = shuffle(createDeck());
+    this.handSeq += 1;
+    this.deck = shuffle(createDeck()).map((c) => ({ ...c, id: `${c.id}#${this.handSeq}` }));
 
     for (const p of this.seatOrder()) {
       if (!this.roundRosterIds.has(p.sessionId)) continue; // 라운드 도중 합류 → 다음 라운드부터 참여
@@ -380,10 +543,17 @@ export class PokerRoom extends Room<PokerState> {
       p.lastAction = '';
       p.revealedHole.clear();
       p.pendingTargetAugment = '';
+      // 예고 홈런 — 선언은 매 핸드 새로 한다(다음 beginAugmentTargetPhase에서 다시 큐에 담김).
+      // frozenGold*/deepThinkUsed는 여기서 절대 건드리지 않는다 — 라운드가 아니라 게임 전체
+      // 단위로 유지돼야 하는 값이다.
+      p.declaredHandCategory = '';
     }
 
     const active = this.actingPlayers();
-    if (active.length < 2) return this.endGame('플레이 가능 인원 부족');
+    if (active.length < 2) {
+      void this.endGame('플레이 가능 인원 부족');
+      return;
+    }
 
     // 블라인드 — 딜러 다음 두 자리가 스몰/빅 블라인드를 강제 베팅
     const { bigBlindSeat } = this.postBlinds(active);
@@ -648,6 +818,13 @@ export class PokerRoom extends Room<PokerState> {
         }
         break;
       }
+      case 'declare_hand': {
+        // 봇/타임아웃 자동 선언 — 낮은 족보 쪽으로 편향(제곱 분포)을 줘서 로열 플러시 같은
+        // 사실상 불가능한 선언을 남발하지 않게 한다. 그래도 무작위성은 남겨 둔다.
+        const idx = Math.min(HAND_CATEGORIES.length - 1, Math.floor(Math.random() ** 2 * HAND_CATEGORIES.length));
+        this.applyDeclareHandEffect(p, { handType: HAND_CATEGORIES[idx] });
+        break;
+      }
     }
     this.markOneShotUsed(p, augment);
   }
@@ -660,6 +837,8 @@ export class PokerRoom extends Room<PokerState> {
         return this.applyEditCardEffect(p, message, augment);
       case 'swap_with_opponent':
         return this.applySwapCardEffect(p, message, augment);
+      case 'declare_hand':
+        return this.applyDeclareHandEffect(p, message);
       default:
         return false;
     }
@@ -744,6 +923,18 @@ export class PokerRoom extends Room<PokerState> {
       { sessionId: p.sessionId, cardIndex: oIdx },
       { sessionId: targetId, cardIndex: tIdx },
     ]);
+    return true;
+  }
+
+  /**
+   * 예고 홈런 — 이번 핸드에 완성하겠다고 선언한 족보를 기록한다. 카드 값을 바꾸는 다른
+   * 즉시형 효과와 달리 상태 변경이 스키마 필드(declaredHandCategory) 자체라 다른 플레이어
+   * 에게도 그대로 실시간 동기화된다(심리전 요소 — 공개 표시가 의도된 사양).
+   */
+  private applyDeclareHandEffect(p: PlayerState, message: AugmentTargetMessage): boolean {
+    const handType = typeof message.handType === 'string' ? message.handType : '';
+    if (!HAND_CATEGORIES.includes(handType as HandCategory)) return false;
+    p.declaredHandCategory = handType;
     return true;
   }
 
@@ -930,6 +1121,26 @@ export class PokerRoom extends Room<PokerState> {
     p.streetBet += pay;
     if (p.streetBet > this.state.currentBet) this.state.currentBet = p.streetBet;
     if (p.stack === 0) p.allIn = true;
+    this.trackPrismBillProgress(p, pay);
+  }
+
+  /**
+   * 프리즘 청구서 — 누적 베팅액이 목표에 도달하면 동결 골드를 전액 반환하고, 다음 증강
+   * 선택에서 프리즘 등급만 제시되도록 예약한다. commit()이 블라인드/콜/레이즈/올인 등
+   * 모든 칩 이동의 유일한 통로라 여기 한 곳에서만 훅을 걸면 빠짐없이 집계된다.
+   */
+  private trackPrismBillProgress(p: PlayerState, amount: number) {
+    if (p.frozenGold <= 0 || amount <= 0) return; // 진행 중인 퀘스트가 없으면 무시
+    p.frozenGoldProgress += amount;
+    if (p.frozenGoldProgress < p.frozenGoldTarget) return;
+
+    const refund = p.frozenGold;
+    p.stack += refund;
+    p.frozenGold = 0;
+    p.frozenGoldTarget = 0;
+    p.frozenGoldProgress = 0;
+    this.prismBillRewardPending.add(p.sessionId);
+    this.broadcast('notice', { text: `💠 ${p.name}님의 프리즘 청구서 완료! ${refund.toLocaleString()}골드 반환` });
   }
 
   /** 레이즈 발생 시 다른 플레이어들이 다시 행동해야 함 */
@@ -1091,11 +1302,17 @@ export class PokerRoom extends Room<PokerState> {
   // ─────────────────────────── 쇼다운 / 결과 ───────────────────────────
 
   private runoutAndShowdown() {
-    if (this.board.length < 5) this.dealBoard(5 - this.board.length);
-    this.showdown();
+    // 아직 5장이 안 갖춰진 상태로 쇼다운에 들어왔다 = 더 이상 베팅이 불가능해서(전원 올인 /
+    // 한 명만 남았는데 그마저 콜해서 더 진행할 액션이 없음 / 그 밖에 액션 가능자가 없는 경우)
+    // 남은 스트리트를 전부 건너뛰고 한 번에 왔다는 뜻 — 이 경우에만 클라이언트가
+    // "SHOW DOWN" 연출 + 보드 순차 공개를 재생한다. 정상적으로 리버까지 매 스트리트
+    // 베팅하며 도달한 쇼다운은 board.length가 이미 5라 여기서 건너뛴 스트리트가 없다.
+    const isRunout = this.board.length < 5;
+    if (isRunout) this.dealBoard(5 - this.board.length);
+    this.showdown(isRunout);
   }
 
-  private showdown() {
+  private showdown(isRunout = false) {
     const st = this.state;
     this.setPhase('showdown');
     this.setActivePlayer(null);
@@ -1104,7 +1321,7 @@ export class PokerRoom extends Room<PokerState> {
 
     // 러시안 룰렛 — 누구 한 명이라도 보유하면(소유자만 유리한 게 아니라) 전원 동일하게
     // 무작위 커뮤니티 카드 1장을 제외하고 판정한다. 이 라운드에서 실제로 발동했으면
-    // result 브로드캐스트에 제거된 카드 id를 실어 클라이언트가 X 표시로 연출한다.
+    // result 브로드캐스트에 제거된 카드 id를 실어 클라이언트가 총알 구멍 연출로 보여준다.
     const hasRoulette = contenders.some((p) => findByEffect(this.ownedAugments(p), 'remove_random_community'));
     let evalBoard = this.board;
     let removedCard: Card | null = null;
@@ -1139,21 +1356,38 @@ export class PokerRoom extends Room<PokerState> {
         { handCategory: w.hand.category, isAllIn: w.p.allIn },
         base,
       );
-      w.p.stack += payout;
+
+      // 예고 홈런 — 선언한 족보와 정확히 일치할 때만 발동한다(payout_multiplier의 조건
+      // 매칭과 달리 상위 계열 승격 없음 — 로열 플러시를 선언했는데 플러시로 이겼다고 터지면 안 됨).
+      let finalPayout = payout;
+      let prophecyBonus = 0;
+      if (
+        w.p.declaredHandCategory &&
+        w.p.declaredHandCategory === w.hand.category &&
+        findByEffect(this.ownedAugments(w.p), 'declare_hand')
+      ) {
+        const rawBonus = Math.round(payout * PROPHECY_BONUS_MULTIPLIER);
+        prophecyBonus = PROPHECY_BONUS_CAP != null ? Math.min(rawBonus, PROPHECY_BONUS_CAP) : rawBonus;
+        finalPayout += prophecyBonus;
+      }
+
+      w.p.stack += finalPayout;
       return {
         sessionId: w.p.sessionId,
         name: w.p.name,
         category: w.hand.category,
         basePayout: base,
-        payout,
+        payout: finalPayout,
         multiplier,
         augments: applied.map((a) => a.name),
+        prophecyBonus,
       };
     });
 
     st.pot = 0;
     this.broadcast('result', {
       byFold: false,
+      round: st.round,
       winners: winnerSummaries,
       hands: results.map((r) => ({
         sessionId: r.p.sessionId,
@@ -1161,10 +1395,14 @@ export class PokerRoom extends Room<PokerState> {
         category: r.hand.category,
       })),
       removedCommunityCardId: removedCard?.id,
+      // 전원 올인 등으로 남은 스트리트를 건너뛰고 온 쇼다운인지 — 이때만 클라이언트가
+      // "SHOW DOWN" 텍스트 + 보드 순차 공개 연출을 재생한다 (runoutAndShowdown 참고)
+      runout: isRunout,
     });
 
     this.setPhase('round_end');
-    this.clock.setTimeout(() => this.endRound(), RESULT_DELAY_MS);
+    const delay = removedCard ? ROULETTE_RESULT_DELAY_MS : SHOWDOWN_RESULT_DELAY_MS;
+    this.clock.setTimeout(() => this.endRound(), delay);
   }
 
   private endByFold(winner?: PlayerState) {
@@ -1178,6 +1416,7 @@ export class PokerRoom extends Room<PokerState> {
       winner.stack += st.pot;
       this.broadcast('result', {
         byFold: true,
+        round: st.round,
         winners: [{ sessionId: winner.sessionId, name: winner.name, payout: st.pot }],
       });
     }
@@ -1190,22 +1429,64 @@ export class PokerRoom extends Room<PokerState> {
   private endRound() {
     if (this.state.phase !== 'round_end') return;
     const solvent = this.seatOrder().filter((p) => p.connected && p.stack > 0);
-    if (this.state.round >= MAX_ROUNDS || solvent.length < 2) return this.endGame('라운드 종료');
+    if (this.state.round >= MAX_ROUNDS || solvent.length < 2) {
+      void this.endGame('라운드 종료');
+      return;
+    }
     this.state.round += 1;
     this.beginRound();
   }
 
-  private endGame(reason: string) {
+  private async endGame(reason: string) {
     this.clearTurnTimer();
     this.augmentTimer?.clear();
     this.targetPromptTimer?.clear();
     this.streetRevealPromptTimer?.clear();
     this.setPhase('gameOver');
     this.setActivePlayer(null);
+    // 클라이언트가 'gameOver'를 받는 시점엔 이미 칩 정산이 끝나 있도록, 브로드캐스트
+    // 전에 로그인 유저 전원을 정산한다(게스트/봇은 SettlementTracker에 없어 스킵된다).
+    for (const p of this.seatOrder()) {
+      await this.settlePlayer(p.sessionId, p.stack);
+    }
     const standings = this.seatOrder()
       .map((p) => ({ sessionId: p.sessionId, name: p.name, stack: p.stack, connected: p.connected }))
       .sort((a, b) => b.stack - a.stack);
     this.broadcast('gameOver', { reason, standings, winner: standings[0] ?? null });
+  }
+
+  /**
+   * 로그인 유저의 최종 스택을 profiles.chips에 되돌려준다 — 입장 시 바이인을 이미
+   * 전부 차감했으므로, 여기서 finalStack을 그대로 더해주면 순효과가 정확히 "이번
+   * 판에서 딴/잃은 만큼"이 된다. SettlementTracker가 세션당 정확히 한 번만 실행되게
+   * 보장하므로 endGame()과 onLeave() 양쪽에서 호출해도 이중 정산되지 않는다.
+   *
+   * 정산 결과가 정확히 0골드(완전히 파산)면 credit_chips가 그 자리에서 1000골드로
+   * 채워주고 bailout_granted:true를 돌려준다 — 이 경우 본인에게만 파산 구제 안내를 보낸다.
+   *
+   * Supabase 호출 실패는 로그만 남기고 삼킨다 — 정산 실패로 게임 종료 흐름 자체가
+   * 막히면 안 되기 때문(최소 스코프에서 감수하는 잔여 리스크: 이 시점의 일시적 장애는
+   * 재시도 큐 없이 유실될 수 있다).
+   */
+  private async settlePlayer(sessionId: string, finalStack: number) {
+    const userId = this.settlement.consume(sessionId);
+    if (!userId || !supabaseAdmin) return;
+    try {
+      const { data: rows, error } = await supabaseAdmin.rpc('credit_chips', {
+        p_user_id: userId,
+        p_amount: finalStack,
+      });
+      if (error) throw error;
+      const row = rows?.[0];
+      if (!row) return;
+      const client = this.clients.find((c) => c.sessionId === sessionId);
+      client?.send('chipsSettled', { chips: row.new_chips });
+      if (row.bailout_granted) {
+        client?.send('notice', { text: '골드가 0이어서 1000골드를 채워드렸습니다' });
+      }
+    } catch (err) {
+      console.error(`[PokerRoom] 칩 정산 실패 (sessionId=${sessionId}, userId=${userId}):`, err);
+    }
   }
 
   // ─────────────────────────── 증강: 카드 재구성 ───────────────────────────
@@ -1346,10 +1627,11 @@ export class PokerRoom extends Room<PokerState> {
     client.send('error', { message });
   }
 
-  /** 턴 제한시간 — 초과 시 자동 체크/다이 */
-  private armTurnTimer() {
+  /** 턴 제한시간 — 초과 시 자동 체크/다이. durationMs를 넘기면(장고의 시간) 그 값으로 새로 건다 */
+  private armTurnTimer(durationMs = TURN_TIMEOUT_MS) {
     this.clearTurnTimer();
     const sessionId = this.state.activePlayerId;
+    this.turnDeadline = Date.now() + durationMs;
     this.turnTimer = this.clock.setTimeout(() => {
       const p = this.state.players.get(sessionId);
       if (!p || !BETTING_PHASES.has(this.state.phase) || this.state.activePlayerId !== sessionId) return;
@@ -1362,12 +1644,33 @@ export class PokerRoom extends Room<PokerState> {
       }
       p.hasActed = true;
       this.resolveAfterAction();
-    }, TURN_TIMEOUT_MS);
+    }, durationMs);
   }
 
   private clearTurnTimer() {
     this.turnTimer?.clear();
     this.turnTimer = undefined;
+  }
+
+  /**
+   * 장고의 시간 — 게임 전체 1회, 지금 내 턴 제한시간을 15초(증강 데이터 값) 연장한다.
+   * 이미 경과한 만큼은 그대로 소진된 것으로 두고, 남은 시간 + 연장분으로 타이머를 다시 건다.
+   */
+  private handleExtendTurnTimer(client: Client) {
+    if (!BETTING_PHASES.has(this.state.phase)) return this.reject(client, '지금은 사용할 수 없습니다');
+    if (client.sessionId !== this.state.activePlayerId) return this.reject(client, '당신의 차례가 아닙니다');
+    const p = this.state.players.get(client.sessionId);
+    if (!p) return;
+    const augment = findByEffect(this.ownedAugments(p), 'extend_timer');
+    if (!augment) return this.reject(client, '장고의 시간 증강이 없습니다');
+    if (p.deepThinkUsed) return this.reject(client, '이미 사용했습니다');
+
+    p.deepThinkUsed = true;
+    const extendMs = Math.round(augment.effect.value * 1000);
+    const remaining = Math.max(0, this.turnDeadline - Date.now());
+    this.armTurnTimer(remaining + extendMs);
+    this.broadcast('notice', { text: `⏳ ${p.name}님이 장고의 시간을 사용했습니다 (+${Math.round(extendMs / 1000)}초)` });
+    this.broadcast('turnExtended', { sessionId: p.sessionId, extendMs });
   }
 
   // ─────────────────────────── 봇 자동 진행 ───────────────────────────

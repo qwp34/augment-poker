@@ -1,0 +1,8 @@
+{
+  "_comment": "라운드별 증강 등급 등장 확률(비율 — 합계가 1일 필요는 없고, 슬롯마다 셋 중 하나를 이 가중치로 뽑는다). 밸런스 조정 시 이 숫자만 바꾸면 된다. augmentEngine.ts의 rollAugmentChoices가 라운드 번호로 이 테이블을 조회한다 — 정의되지 않은 라운드(예: MAX_ROUNDS 확장)는 가장 가까운 정의된 라운드 값으로 고정(clamp)된다.",
+  "1": { "silver": 0.70, "gold": 0.25, "prismatic": 0.05 },
+  "2": { "silver": 0.55, "gold": 0.35, "prismatic": 0.10 },
+  "3": { "silver": 0.40, "gold": 0.42, "prismatic": 0.18 },
+  "4": { "silver": 0.25, "gold": 0.50, "prismatic": 0.25 },
+  "5": { "silver": 0.15, "gold": 0.50, "prismatic": 0.35 }
+}

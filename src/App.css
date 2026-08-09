@@ -243,7 +243,12 @@
   position: relative;
   z-index: 1;
   margin: 0;
-  font-family: var(--font-display);
+  /* Black Han Sans(--font-display)는 단일 굵기 폰트라 font-weight로 얇게 만들 수 없어서,
+     이 타이틀 텍스트만 여러 굵기를 지원하는 Noto Sans KR로 바꾸고 Bold(700)를 적용한다 —
+     Black Han Sans의 뭉툭한 두께보다 한 단계 얇으면서도 큰 사이즈+글로우로 임팩트는 유지된다.
+     다른 곳의 var(--font-display) 사용(메인 메뉴 버튼 등)은 그대로 Black Han Sans를 쓴다. */
+  font-family: 'Noto Sans KR', 'Malgun Gothic', 'Apple SD Gothic Neo', sans-serif;
+  font-weight: 700;
   font-size: 92px;
   letter-spacing: 2px;
   color: #ffffff;
@@ -332,6 +337,32 @@
   color: #f4f4f6;
   text-shadow: 0 2px 8px rgba(0, 0, 0, 0.9);
   white-space: nowrap;
+}
+
+/* 비로그인 상태 — "증강포커" 네온 액자(top:265~455px) 바로 아래, 클릭 힌트와 같은
+   가로 중심(640px)에 로그인 버튼을 띄운다. 로그인 전엔 클릭-입장 자체가 막혀 있어
+   (StageCanvas clickable=false) 이 버튼이 1단계에서 유일한 인터랙션 지점이다. */
+.title-splash-login-btn {
+  position: absolute;
+  left: 640px;
+  top: 480px;
+  transform: translateX(-50%);
+  z-index: 5;
+}
+
+/* .gold-btn:hover의 transform: translateY(-2px)가 이 버튼 고유의 위치 보정용
+   translateX(-50%)를 통째로 덮어써서, 호버 시 중앙 정렬이 깨지며 오른쪽으로
+   튕겨나가는 것처럼 보였다 — translateX(-50%)를 유지한 채 scale만 추가해 위치는
+   그대로 두고 살짝 커지기만 하도록 고정한다.
+   주의: 이전엔 `.title-splash-login-btn:hover` 단일 클래스 선택자로 덮으려 했는데,
+   `.gold-btn:hover`와 명시도(specificity)가 완전히 같아서(클래스 1개+가상클래스 1개)
+   CSS 캐스케이드가 "스타일시트에서 더 나중에 나온 규칙"을 이긴다 — 이 파일에서
+   `.gold-btn:hover`가 이 규칙보다 뒤에 있어서 실제로는 계속 `.gold-btn:hover`가
+   적용되고 있었다(순서에 의존하는 취약한 수정이었음). 두 클래스를 함께 써서
+   명시도를 `.gold-btn:hover`보다 확실히 높여, 스타일시트 순서와 무관하게 항상
+   이 규칙이 이기도록 고쳤다. */
+.gold-btn.title-splash-login-btn:hover {
+  transform: translateX(-50%) scale(1.05);
 }
 
 /* ── 2단계: 게임 시작 / 멀티플레이 버튼 ── */
@@ -466,6 +497,169 @@
 .back-to-title-btn:hover {
   color: var(--text);
   border-color: rgba(255, 255, 255, 0.5);
+}
+
+/* ── 2단계 메뉴: 보유 칩 표시 + 설정(톱니바퀴) 버튼 — back-to-title-btn(좌측 상단)과
+   겹치지 않게 우측 상단에 배치. 톱니바퀴를 클릭하면 로그아웃 등을 담는 작은 드롭다운
+   패널이 열린다. */
+.settings-corner {
+  position: fixed;
+  top: 22px;
+  right: 22px;
+  z-index: 200;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.settings-chip-display {
+  padding: 7px 14px;
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.35);
+  color: var(--gold);
+  font-family: var(--font-body);
+  font-size: 0.9rem;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.settings-gear-btn {
+  width: 38px;
+  height: 38px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.35);
+  font-size: 1.1rem;
+  line-height: 1;
+  transition: border-color 0.12s, transform 0.12s;
+}
+
+.settings-gear-btn:hover {
+  border-color: rgba(255, 255, 255, 0.5);
+  transform: rotate(20deg);
+}
+
+.settings-popup-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 199;
+}
+
+.settings-popup {
+  position: fixed;
+  top: 68px;
+  right: 22px;
+  z-index: 200;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 8px;
+  width: 200px;
+  background: linear-gradient(170deg, #14303a, #0c1e26);
+  border: 2px solid var(--text-dim);
+  border-radius: 12px;
+  padding: 14px;
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.6);
+}
+
+.settings-popup-title {
+  margin: 0;
+  font-size: 0.8rem;
+  font-weight: 800;
+  letter-spacing: 1px;
+  color: var(--text-dim);
+  text-transform: uppercase;
+}
+
+.settings-popup-profile {
+  margin: 0;
+  padding-bottom: 8px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.15);
+  font-size: 0.85rem;
+  color: var(--gold);
+  font-weight: 700;
+}
+
+/* 지금은 로그아웃 한 줄뿐이지만, 다른 설정 항목도 같은 스타일로 이어 붙일 수 있게
+   "패널 안의 한 줄짜리 버튼" 자체를 범용 클래스로 둔다 */
+.settings-popup-item {
+  border: none;
+  background: transparent;
+  color: var(--text);
+  text-align: left;
+  padding: 8px 6px;
+  border-radius: 6px;
+  font-size: 0.9rem;
+  font-weight: 600;
+  transition: background 0.12s;
+}
+
+.settings-popup-item:hover {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+/* ── 로그인/회원가입 모달 ── */
+.auth-modal-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 210;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(4, 12, 10, 0.6);
+  backdrop-filter: blur(2px);
+}
+
+.auth-modal {
+  width: min(360px, 90vw);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+  background: linear-gradient(170deg, #14303a, #0c1e26);
+  border: 2px solid var(--text-dim);
+  border-radius: 16px;
+  padding: 26px 28px;
+  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.6);
+}
+
+.auth-modal-tabs {
+  display: flex;
+  gap: 8px;
+  width: 100%;
+}
+
+.auth-modal-tab {
+  flex: 1;
+  padding: 8px 0;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text-dim);
+  font-weight: 700;
+  font-size: 0.9rem;
+}
+
+.auth-modal-tab-active {
+  border-color: var(--gold);
+  color: var(--gold);
+  background: rgba(245, 197, 66, 0.08);
+}
+
+.auth-modal-close {
+  color: var(--text-dim);
+  font-size: 0.85rem;
+  text-decoration: underline;
+  background: transparent;
+  border: none;
+}
+
+.auth-modal-close:hover {
+  color: var(--text);
 }
 
 .final-augments {
@@ -774,28 +968,180 @@
   gap: 9px;
 }
 
-/* 러시안 룰렛 — 쇼다운 시 판정에서 제외된 커뮤니티 카드에 X 표시로 연출 */
+/* 러시안 룰렛 — 쇼다운 시 판정에서 제외된 커뮤니티 카드에 총알 구멍으로 연출 */
 .mp-board-card-slot {
   position: relative;
   display: inline-flex;
 }
 
 .mp-board-card-removed .pcard {
-  opacity: 0.4;
-  filter: grayscale(0.7);
+  opacity: 0.45;
+  filter: grayscale(0.75);
+  transition: opacity 0.25s ease, filter 0.25s ease;
 }
 
-.mp-removed-x {
+/* 총알 구멍 — 균열(방사형 줄무늬) + 중앙의 검은 구멍을 팝 애니메이션으로 등장시킨다 */
+.mp-bullet-hole {
   position: absolute;
   inset: 0;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 2.6rem;
-  font-weight: 900;
-  color: #ff5252;
-  text-shadow: 0 0 14px rgba(255, 82, 82, 0.85), 0 0 4px rgba(0, 0, 0, 0.8);
   pointer-events: none;
+}
+
+.mp-bullet-hole::before {
+  content: '';
+  position: absolute;
+  width: 88%;
+  height: 88%;
+  border-radius: 50%;
+  background: repeating-conic-gradient(from 0deg, rgba(15, 15, 15, 0.55) 0deg 3deg, transparent 3deg 24deg);
+  mix-blend-mode: multiply;
+  opacity: 0;
+  animation: bullet-crack-in 0.3s ease-out 0.05s forwards;
+}
+
+.mp-bullet-hole::after {
+  content: '';
+  position: absolute;
+  width: 32%;
+  height: 32%;
+  border-radius: 50%;
+  background: radial-gradient(circle at 35% 32%, #4a4a4a 0%, #141414 55%, #000 100%);
+  box-shadow: 0 0 0 3px rgba(0, 0, 0, 0.55), 0 0 16px rgba(0, 0, 0, 0.75), inset 0 2px 4px rgba(0, 0, 0, 0.9);
+  transform: scale(0);
+  animation: bullet-hole-pop 0.32s cubic-bezier(0.25, 1.5, 0.4, 1) forwards;
+}
+
+@keyframes bullet-crack-in {
+  0% {
+    opacity: 0;
+    transform: scale(0.4) rotate(-15deg);
+  }
+  100% {
+    opacity: 0.9;
+    transform: scale(1) rotate(0deg);
+  }
+}
+
+@keyframes bullet-hole-pop {
+  0% {
+    transform: scale(0);
+  }
+  65% {
+    transform: scale(1.35);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
+/* ── 러시안 룰렛 카운트다운 — 테이블이 미세하게(또는 급하게) 떨리는 긴장감 연출 ── */
+@keyframes rr-shake {
+  0%, 100% { transform: translate(0, 0); }
+  10% { transform: translate(-2px, 1px); }
+  20% { transform: translate(2px, -1px); }
+  30% { transform: translate(-3px, 2px); }
+  40% { transform: translate(3px, -2px); }
+  50% { transform: translate(-4px, 2px); }
+  60% { transform: translate(4px, -3px); }
+  70% { transform: translate(-3px, 2px); }
+  80% { transform: translate(3px, -2px); }
+  90% { transform: translate(-2px, 1px); }
+}
+
+.mp-roulette-shake-soft {
+  animation: rr-shake 0.7s linear infinite;
+}
+
+.mp-roulette-shake {
+  animation: rr-shake 0.28s linear infinite;
+}
+
+/* ── 쇼다운/러시안 룰렛 전체 화면 연출 오버레이 — .mp-table-area 전체를 덮는다 ── */
+.mp-showdown-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 45;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+}
+
+.mp-showdown-text {
+  font-size: 4.4rem;
+  font-weight: 900;
+  letter-spacing: 8px;
+  color: var(--gold);
+  text-shadow: 0 0 26px rgba(245, 197, 66, 0.9), 0 4px 12px rgba(0, 0, 0, 0.95);
+}
+
+.mp-original-hands-panel {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  background: rgba(4, 12, 10, 0.55);
+  border-radius: 18px;
+  padding: 18px 32px;
+}
+
+.mp-original-hands-title {
+  font-size: 1.3rem;
+  font-weight: 800;
+  color: #fff;
+  letter-spacing: 2px;
+  text-shadow: 0 2px 4px rgba(0, 0, 0, 0.9);
+}
+
+.mp-original-hands-list {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  align-items: center;
+}
+
+.mp-original-hand-row {
+  font-size: 1.15rem;
+  font-weight: 700;
+  color: var(--gold);
+  text-shadow: 0 2px 4px rgba(0, 0, 0, 0.9);
+}
+
+.mp-original-hand-row .mp-original-hand-name {
+  color: #fff;
+  margin-right: 8px;
+}
+
+.mp-roulette-countdown-text {
+  font-size: 2.4rem;
+  font-weight: 800;
+  color: #ffd1d1;
+  letter-spacing: 3px;
+  text-shadow: 0 0 18px rgba(255, 60, 60, 0.75), 0 2px 6px rgba(0, 0, 0, 0.95);
+}
+
+@keyframes rr-tick-pulse {
+  0%, 100% { opacity: 0.5; transform: scale(0.95); }
+  50% { opacity: 1; transform: scale(1.08); }
+}
+
+.mp-tick-slow {
+  animation: rr-tick-pulse 0.6s ease-in-out infinite;
+}
+
+.mp-tick-fast {
+  animation: rr-tick-pulse 0.22s ease-in-out infinite;
+}
+
+.mp-roulette-trigger-text {
+  font-size: 3.8rem;
+  font-weight: 900;
+  color: #ff3b3b;
+  letter-spacing: 2px;
+  text-shadow: 0 0 26px rgba(255, 40, 40, 0.95), 0 4px 12px rgba(0, 0, 0, 0.95);
 }
 
 .pcard {
@@ -1603,6 +1949,35 @@
   animation: blink 1s ease-in-out infinite alternate;
 }
 
+/* 증강 선택 자동 선택 카운트다운 — 20초까지는 아예 안 뜨다가 마지막 10초만 우측 하단에
+   크게 표시된다(PokerRoom.ts의 AUGMENT_THINK_MS/AUGMENT_COUNTDOWN_MS 참고). */
+.mp-augment-timer {
+  position: fixed;
+  right: 36px;
+  bottom: 36px;
+  z-index: 50;
+  width: 74px;
+  height: 74px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  border: 3px solid var(--gold);
+  background: rgba(8, 20, 24, 0.9);
+  color: var(--gold);
+  font-family: var(--font-body);
+  font-size: 2.2rem;
+  font-weight: 900;
+  box-shadow: 0 0 20px rgba(245, 197, 66, 0.4), 0 8px 20px rgba(0, 0, 0, 0.5);
+}
+
+.mp-augment-timer-urgent {
+  border-color: #ff5252;
+  color: #ff5252;
+  box-shadow: 0 0 24px rgba(255, 82, 82, 0.6), 0 8px 20px rgba(0, 0, 0, 0.5);
+  animation: blink 0.5s ease-in-out infinite alternate;
+}
+
 .mp-augment-pick-row {
   display: flex;
   gap: 24px;
@@ -1705,6 +2080,10 @@
   justify-content: flex-start;
   gap: 10px;
   padding: 14px 16px 16px;
+  /* 공용 .screen은 overflow:hidden이라, 커뮤니티 카드 아래로 absolute 배치되는 승리
+     안내 배너(.mp-result-banner)가 테이블 화면 박스 경계를 살짝 넘으면 잘려 보일 수
+     있었다 — 이 화면에서만 overflow를 풀어 배너가 잘리지 않게 한다. */
+  overflow: visible;
 }
 
 .mp-round-badge {
@@ -1873,6 +2252,20 @@
   color: #6fd0e8;
 }
 
+/* 예고 홈런 — 다른 플레이어에게도 공개되는 선언(심리전 요소) */
+.mp-seat-prophecy {
+  font-size: 15px;
+  font-weight: 700;
+  color: #ff9a3d;
+}
+
+/* 프리즘 청구서 — 동결 중인 골드의 누적 베팅 진행도 */
+.mp-seat-prism-progress {
+  font-size: 14px;
+  font-weight: 600;
+  color: #c893ff;
+}
+
 /* 홀카드 오른쪽에 보유 증강을 나란히 배치 — 보드(중앙 커뮤니티 카드)와 절대 겹치지 않도록
    이 줄 전체의 폭/높이를 고정하고, 증강 개수가 늘어나면 오른쪽 열만 세로 스크롤한다.
    align-items를 flex-end로 둬서 증강 칩 열의 아래쪽이 카드 줄(=카드-닉네임 열의 맨 아래)과
@@ -2008,30 +2401,6 @@
   white-space: nowrap;
 }
 
-/* ── 대풍년처럼 "갑자기 규칙이 바뀐다"는 걸 놓치면 안 되는 큰 알림 — 카드 변경 토스트보다
-   한층 더 크고 화면 상단 중앙에서 눈에 확 띄게 표시된다. 좌석/보드는 가리지 않는 위치라
-   그 아래에서 실제 딜링 애니메이션이 그대로 보인다. */
-.mp-big-announcement {
-  position: absolute;
-  top: 9%;
-  left: 50%;
-  transform: translateX(-50%);
-  z-index: 25;
-  background: rgba(8, 20, 24, 0.96);
-  backdrop-filter: blur(4px);
-  border: 3px solid var(--gold);
-  color: var(--gold);
-  font-size: 1.7rem;
-  font-weight: 900;
-  padding: 18px 38px;
-  border-radius: 20px;
-  box-shadow: 0 0 40px rgba(245, 197, 66, 0.65), 0 12px 30px rgba(0, 0, 0, 0.6);
-  text-shadow: 0 0 16px rgba(245, 197, 66, 0.6);
-  text-align: center;
-  max-width: 90%;
-  pointer-events: none;
-}
-
 .mp-bottom-action {
   display: flex;
   align-items: center;
@@ -2103,6 +2472,38 @@
 }
 
 .mp-reset-board-btn-disabled:hover {
+  background: rgba(255, 255, 255, 0.05);
+  box-shadow: none;
+}
+
+/* 장고의 시간 — 리셋 버튼과 동일한 스타일 언어(테두리 버튼), 색상만 골드 계열로 구분 */
+.mp-extend-timer-btn {
+  height: 44px;
+  border-radius: 12px;
+  border: 1.5px solid var(--gold);
+  background: rgba(245, 197, 66, 0.08);
+  color: var(--gold);
+  font-size: 0.95rem;
+  font-weight: 700;
+  align-self: center;
+  padding: 0 22px;
+  transition: background 0.15s, box-shadow 0.15s;
+}
+
+.mp-extend-timer-btn:hover {
+  background: rgba(245, 197, 66, 0.18);
+  box-shadow: 0 0 14px rgba(245, 197, 66, 0.45);
+}
+
+/* 게임 전체 1회 사용 후 — 회색으로 비활성화(리셋 버튼과 동일한 원칙) */
+.mp-extend-timer-btn-disabled {
+  border-color: rgba(255, 255, 255, 0.25);
+  background: rgba(255, 255, 255, 0.05);
+  color: rgba(255, 255, 255, 0.35);
+  cursor: not-allowed;
+}
+
+.mp-extend-timer-btn-disabled:hover {
   background: rgba(255, 255, 255, 0.05);
   box-shadow: none;
 }
@@ -2436,11 +2837,36 @@
   transform: scale(1.08);
 }
 
+/* 예고 홈런 — 하이카드~로열플러시 10개를 2열로 나열 */
+.mp-target-handtype-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 8px;
+}
+
+.mp-target-handtype-btn {
+  padding: 10px 12px;
+  border-radius: 8px;
+  border: 1px solid var(--text-dim);
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--text);
+  font-weight: 700;
+  text-align: center;
+  transition: border-color 0.15s, color 0.15s, background 0.15s;
+}
+
+.mp-target-handtype-btn:hover {
+  border-color: var(--gold);
+  color: var(--gold);
+  background: rgba(245, 197, 66, 0.08);
+}
+
 /* 아직 확정하지 않은 "골라둔" 상태 — 확인 버튼을 눌러야 실제로 반영된다 */
 .mp-target-choice-btn.mp-target-selected,
 .mp-target-card-btn.mp-target-selected,
 .mp-target-rank-btn.mp-target-selected,
-.mp-target-suit-btn.mp-target-selected {
+.mp-target-suit-btn.mp-target-selected,
+.mp-target-handtype-btn.mp-target-selected {
   border-color: var(--gold);
   background: rgba(245, 197, 66, 0.16);
   color: var(--gold);
@@ -2582,97 +3008,114 @@
   box-shadow: 0 0 8px rgba(176, 110, 245, 0.7);
 }
 
-/* ── 쇼다운 결과 배너 — 특정 좌석을 가리지 않도록 POT 캡슐(.pot-capsule, position:relative)
-   정중앙에 겹쳐서 뜬다. 어떤 플레이어의 핸드/닉네임/보유 금액과도 절대 겹치지 않는 유일한
-   "중립" 위치라서 여기로 옮겼다 — POT 숫자 위에 자체 불투명 배경으로 덮어씌워진다. */
-/* POT 캡슐 정중앙에 겹쳐서 뜨면(top:50%/translate(-50%,-50%)) 내용이 조금만 길어져도
- * 박스 절반이 POT 아래의 보드 카드 줄을 침범해 카드를 가렸다 — 대신 POT 캡슐의 "위쪽"에
- * 바닥을 붙이고 위로만 자라도록(bottom:100%) 바꿔서, 박스가 아무리 커져도 보드 카드
- * 방향(아래쪽)으로는 절대 내려오지 않는다. max-height+overflow-y로 이중 안전장치까지 둔다. */
+/* ── 쇼다운 결과 연출 — 보드(팟 캡슐 + 커뮤니티 카드 5장)와 하단 내 좌석(닉네임/칩 박스)
+   사이의 빈 공간에 띄운다. 이 틈은 평소 아무 카드/좌석 정보도 없는 중립 지대라서, 연출이
+   커져도 어떤 플레이어의 핸드/닉네임/보유 금액도 가리지 않는다.
+   .mp-center-board(팟 캡슐+커뮤니티 카드 줄로만 높이가 정해짐) 바로 아래에 top:100%로
+   붙였다 — 이 배너 자신은 position:absolute라 컨테이너 높이 계산에서 빠지므로, 항상
+   "커뮤니티 카드 줄 바로 아래"가 기준점이 된다. 그 아래는 곧 내 좌석의 닉네임/칩 박스라
+   max-height로 그 틈 안에서만 자라도록 제한하되, overflow는 hidden이 아니라 visible로 둬서
+   내용이 그 추정치를 넘어도 잘려 보이지 않고 살짝 넘치는 선에서 그친다(카드 위에 겹쳐 보이던
+   / 텍스트가 잘려 보이던 문제의 원인). z-index도 커뮤니티 카드보다 확실히 높여 항상 카드
+   위에 뜨도록 한다. 반투명 검정 박스(rgba(0,0,0,0.85))로 감싸 felt 배경/카드와 겹쳐도
+   또렷이 구분되어 보인다. */
 .mp-result-banner {
   position: absolute;
-  bottom: 100%;
-  margin-bottom: 14px;
+  top: 100%;
+  margin-top: 14px;
   left: 50%;
-  /* 가로 중앙 정렬(-50%)은 framer-motion의 animate x 값으로 준다(ResultBanner 컴포넌트
-     참고) — motion이 transform을 통째로 관리하므로 여기 transform 선언은 무시된다. */
-  z-index: 10;
+  transform: translateX(-50%);
+  z-index: 30;
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 8px;
-  background: rgba(8, 20, 24, 0.97);
-  border: 2px solid var(--gold);
-  border-radius: 14px;
-  padding: 16px 26px;
-  box-shadow: 0 0 30px rgba(245, 197, 66, 0.4), 0 10px 30px rgba(0, 0, 0, 0.6);
+  gap: 10px;
   width: max-content;
-  max-width: min(480px, 80vw);
-  max-height: 280px;
-  overflow-y: auto;
+  max-width: 92vw;
+  max-height: 140px;
+  overflow: visible;
+  background: rgba(0, 0, 0, 0.85);
+  border-radius: 8px;
+  padding: 12px 24px;
+  pointer-events: none;
 }
 
-.mp-result-line {
+.mp-result-line-group {
   display: flex;
   flex-direction: column;
   align-items: center;
   gap: 6px;
-  text-align: center;
-  color: var(--text);
-  font-size: 1.05rem;
 }
 
-.mp-result-line + .mp-result-line {
-  margin-top: 14px;
-  padding-top: 14px;
-  border-top: 1px solid rgba(255, 255, 255, 0.12);
+.mp-result-line-group + .mp-result-line-group {
+  margin-top: 10px;
+}
+
+/* 승자/족보/획득 골드를 "AI 봇 4 · 원 페어 · +200 골드"처럼 한 줄로 고정 — 줄바꿈되면
+   내용이 잘려 보이는 원인이 되므로 항상 nowrap, 글자 크기도 요소마다 다르지 않게 통일한다. */
+.mp-result-line {
+  display: flex;
+  flex-direction: row;
+  flex-wrap: nowrap;
+  align-items: baseline;
+  justify-content: center;
+  column-gap: 8px;
+  white-space: nowrap;
+}
+
+.mp-result-trophy,
+.mp-result-winner-name,
+.mp-result-suffix,
+.mp-result-category,
+.mp-result-payout,
+.mp-result-multiplier,
+.mp-result-prophecy,
+.mp-result-dot {
+  font-size: 1.1rem;
+  white-space: nowrap;
+}
+
+.mp-result-dot {
+  color: rgba(255, 255, 255, 0.5);
+  font-weight: 600;
+}
+
+.mp-result-trophy {
+  filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.85));
 }
 
 .mp-result-winner-name {
-  font-size: 1.1rem;
+  font-weight: 800;
+  color: #fff;
 }
 
-/* 족보 이름 — 승자 이름과 배당 사이, 절대 놓칠 수 없게 크고 굵게 강조 + 등장 시 살짝 확대되며 팝 */
+.mp-result-suffix {
+  font-weight: 600;
+  color: #e8e8e8;
+}
+
+/* 족보 이름 — 굵게 강조하되 다른 요소와 같은 크기(한 줄 안에서 통일) */
 .mp-result-category {
-  font-size: 2.4rem;
   font-weight: 900;
   color: var(--gold);
-  letter-spacing: 1px;
-  text-shadow: 0 0 20px rgba(245, 197, 66, 0.7);
-  animation: mp-category-pop 0.45s cubic-bezier(0.2, 1.4, 0.4, 1) both;
-}
-
-@keyframes mp-category-pop {
-  0% {
-    opacity: 0;
-    transform: scale(0.4);
-  }
-  60% {
-    opacity: 1;
-    transform: scale(1.15);
-  }
-  100% {
-    opacity: 1;
-    transform: scale(1);
-  }
-}
-
-.mp-result-payout-row {
-  display: flex;
-  align-items: center;
-  gap: 10px;
+  letter-spacing: 0.5px;
+  text-shadow: 0 0 10px rgba(245, 197, 66, 0.6);
 }
 
 .mp-result-payout {
-  color: var(--gold);
   font-weight: 800;
+  color: var(--gold);
 }
 
 .mp-result-multiplier {
   color: #ff9a3d;
   font-weight: 900;
-  font-size: 1.15rem;
-  text-shadow: 0 0 12px rgba(255, 154, 61, 0.7);
+}
+
+/* 예고 홈런 적중 보너스 — 배당 배율(주황)과 구분되는 프리즘 계열 색상 */
+.mp-result-prophecy {
+  color: #c893ff;
+  font-weight: 900;
 }
 
 /* ═══ 인게임 테이블 확대 — design-reference/ingame-table.html(1558×895) 실측값 반영 ═══

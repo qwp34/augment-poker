@@ -28,6 +28,20 @@ const CATEGORY_RANK: Record<HandCategory, number> = {
   royal_flush: 9,
 };
 
+/** 하이카드 ~ 로열스트레이트플러시, 오름차순(CATEGORY_RANK와 동일한 순서) — 족보 목록 UI에서 공용으로 쓴다 */
+export const HAND_CATEGORY_ORDER: HandCategory[] = [
+  'high_card',
+  'pair',
+  'two_pair',
+  'three_of_a_kind',
+  'straight',
+  'flush',
+  'full_house',
+  'four_of_a_kind',
+  'straight_flush',
+  'royal_flush',
+];
+
 export const CATEGORY_NAMES_KO: Record<HandCategory, string> = {
   high_card: '하이 카드',
   pair: '원 페어',

@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { Card } from './Card';
 import augmentsData from '../data/augments.json';
 import type { Augment } from '../engine/augmentEngine';
+import { CATEGORY_NAMES_KO, HAND_CATEGORY_ORDER } from '../engine/handEvaluator';
 import type { Card as EngineCard, Rank } from '../engine/types';
 import { RANKS, SUITS, SUIT_SYMBOLS, rankLabel } from '../engine/types';
 import type { AugmentTargetRequest, ClientCard } from '../net/useMultiplayerRoom';
@@ -25,6 +26,7 @@ export interface AugmentTargetPayload {
   cardIndex?: 0 | 1;
   rank?: number;
   suit?: string;
+  handType?: string;
 }
 
 interface AugmentTargetScreenProps {
@@ -35,7 +37,7 @@ interface AugmentTargetScreenProps {
   onSkip: () => void;
 }
 
-type Step = 'opponent' | 'targetCard' | 'ownCard' | 'rank' | 'suit';
+type Step = 'opponent' | 'targetCard' | 'ownCard' | 'rank' | 'suit' | 'handType';
 
 /**
  * 즉시형 증강(음침한 눈/카멜레온/당근이세요?)의 대상 지정 모달 — 이미 보유한 증강이 매 핸드
@@ -68,17 +70,19 @@ export function AugmentTargetScreen({ request, myHole, onSubmit, onSkip }: Augme
 
   const needsOpponent = effectType === 'reveal_opponent_card' || effectType === 'swap_with_opponent';
   const step: Step =
-    needsOpponent && targetSessionId === null
-      ? 'opponent'
-      : needsOpponent && targetCardIndex === null
-        ? 'targetCard'
-        : effectType === 'edit_own_card' && ownCardIndex === null
-          ? 'ownCard'
-          : effectType === 'edit_own_card' && rank === null
-            ? 'rank'
-            : effectType === 'edit_own_card'
-              ? 'suit'
-              : 'ownCard'; // swap의 마지막 단계 — 내 카드 선택
+    effectType === 'declare_hand'
+      ? 'handType' // 예고 홈런 — 대상/카드 없이 목표 족보 하나만 고르는 단일 단계
+      : needsOpponent && targetSessionId === null
+        ? 'opponent'
+        : needsOpponent && targetCardIndex === null
+          ? 'targetCard'
+          : effectType === 'edit_own_card' && ownCardIndex === null
+            ? 'ownCard'
+            : effectType === 'edit_own_card' && rank === null
+              ? 'rank'
+              : effectType === 'edit_own_card'
+                ? 'suit'
+                : 'ownCard'; // swap의 마지막 단계 — 내 카드 선택
 
   // 단계가 바뀌면(직전 확인으로 다음 단계 진입) 드래프트를 비운다
   useEffect(() => {
@@ -95,6 +99,7 @@ export function AugmentTargetScreen({ request, myHole, onSubmit, onSkip }: Augme
     ownCard: `${effectType === 'edit_own_card' ? '바꿀' : '내줄'} 내 카드를 고른 뒤 확인을 누르세요`,
     rank: '원하는 숫자를 고른 뒤 확인을 누르세요',
     suit: '원하는 무늬를 고른 뒤 확인을 누르세요',
+    handType: '이번 판에 완성할 목표 족보를 고른 뒤 확인을 누르세요',
   };
 
   /** 확인 클릭 — 이번 단계의 드래프트를 확정한다. 마지막 단계였다면 곧바로 서버에 제출한다 */
@@ -127,6 +132,9 @@ export function AugmentTargetScreen({ request, myHole, onSubmit, onSkip }: Augme
         return;
       case 'suit':
         onSubmit({ cardIndex: ownCardIndex!, rank: rank!, suit: draft as string });
+        return;
+      case 'handType':
+        onSubmit({ handType: draft as string });
         return;
     }
   };
@@ -230,6 +238,20 @@ export function AugmentTargetScreen({ request, myHole, onSubmit, onSkip }: Augme
                   onClick={() => selectDraft(s)}
                 >
                   {SUIT_SYMBOLS[s]}
+                </button>
+              ))}
+            </div>
+          )}
+
+          {step === 'handType' && (
+            <div className="mp-target-handtype-grid">
+              {HAND_CATEGORY_ORDER.map((cat) => (
+                <button
+                  key={cat}
+                  className={`mp-target-handtype-btn${draft === cat ? ' mp-target-selected' : ''}`}
+                  onClick={() => selectDraft(cat)}
+                >
+                  {CATEGORY_NAMES_KO[cat]}
                 </button>
               ))}
             </div>

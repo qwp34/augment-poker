@@ -4,6 +4,7 @@
  */
 
 import type { HandCategory } from './handEvaluator';
+import rarityTableData from '../data/augmentRarityTable.json';
 
 export type AugmentRarity = 'silver' | 'gold' | 'prismatic';
 
@@ -36,18 +37,22 @@ export type AugmentEffectType =
   | 'remove_random_community'
   | 'extra_hole_card'
   | 'rotate_hole_cards'
-  | 'reset_board';
+  | 'reset_board'
+  | 'freeze_gold_quest'
+  | 'extend_timer'
+  | 'declare_hand';
 
 /**
- * 대상 지정(상대 플레이어/카드/숫자·무늬)이 필요한 효과인지 — (일회성이 아닌 한) 매 핸드
- * 시작 시 새로 딜링된 홀카드를 대상으로 다시 대상을 받아야 한다
- * (음침한 눈 / 카멜레온 / 당근이세요?).
+ * 대상 지정(상대 플레이어/카드/숫자·무늬/족보 선언)이 필요한 효과인지 — (일회성이 아닌 한)
+ * 매 핸드 시작 시 새로 딜링된 홀카드를 대상으로 다시 대상을 받아야 한다
+ * (음침한 눈 / 카멜레온 / 당근이세요? / 예고 홈런).
  */
 export function needsTargetSelection(augment: Augment): boolean {
   return (
     augment.effect.type === 'reveal_opponent_card' ||
     augment.effect.type === 'edit_own_card' ||
-    augment.effect.type === 'swap_with_opponent'
+    augment.effect.type === 'swap_with_opponent' ||
+    augment.effect.type === 'declare_hand'
   );
 }
 
@@ -138,13 +143,72 @@ export function findByEffect(owned: Augment[], type: AugmentEffectType): Augment
   return owned.find((a) => a.effect.type === type);
 }
 
-/** 아직 보유하지 않은 증강 중 count개를 무작위 제시 */
-export function rollAugmentChoices(pool: Augment[], owned: Augment[], count = 3): Augment[] {
-  const remaining = pool.filter((a) => !hasAugment(owned, a.id));
-  const shuffled = [...remaining];
-  for (let i = shuffled.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+type RarityWeights = Record<AugmentRarity, number>;
+
+const RARITY_TABLE = rarityTableData as unknown as Record<string, RarityWeights>;
+/** JSON에 "_comment" 같은 비-라운드 키가 섞여 있어도 무시하도록 숫자 키만 정렬해 둔다 */
+const RARITY_TABLE_ROUNDS = Object.keys(RARITY_TABLE)
+  .filter((k) => /^\d+$/.test(k))
+  .map(Number)
+  .sort((a, b) => a - b);
+
+/**
+ * 라운드 번호로 등급 확률 가중치를 조회한다 (augmentRarityTable.json, 코드 수정 없이
+ * 숫자만 바꿔 밸런스 조정 가능). 테이블에 없는 라운드(예: MAX_ROUNDS를 늘린 경우)는
+ * 가장 가까운 정의된 라운드의 값으로 고정(clamp)된다.
+ */
+export function rarityWeightsForRound(round: number): RarityWeights {
+  const min = RARITY_TABLE_ROUNDS[0];
+  const max = RARITY_TABLE_ROUNDS[RARITY_TABLE_ROUNDS.length - 1];
+  const clamped = Math.min(Math.max(round, min), max);
+  return RARITY_TABLE[String(clamped)];
+}
+
+/** 가중치와, 등급별로 실제 남은 후보가 있는지를 함께 보고 등급 하나를 뽑는다.
+ *  후보가 없는 등급은 아예 후보군에서 빠지므로(가중치가 다른 등급으로 자연히
+ *  재분배됨) 특정 등급 풀이 비어도 에러 없이 다른 등급으로 대체된다. */
+function pickWeightedRarity(
+  weights: RarityWeights,
+  available: Record<AugmentRarity, Augment[]>,
+): AugmentRarity | null {
+  const rarities = (Object.keys(weights) as AugmentRarity[]).filter((r) => available[r].length > 0);
+  if (rarities.length === 0) return null;
+
+  const total = rarities.reduce((sum, r) => sum + weights[r], 0);
+  if (total <= 0) return rarities[Math.floor(Math.random() * rarities.length)];
+
+  let roll = Math.random() * total;
+  for (const r of rarities) {
+    roll -= weights[r];
+    if (roll <= 0) return r;
   }
-  return shuffled.slice(0, count);
+  return rarities[rarities.length - 1];
+}
+
+/**
+ * 라운드에 맞는 등급 확률로 count개의 증강 후보를 제시한다. 슬롯마다 독립적으로 등급을
+ * 굴린 뒤 해당 등급 풀에서 무작위로 하나를 뽑으므로, 최종 3장의 등급 구성은 매번 달라질
+ * 수 있다(예: 실버 2 + 골드 1). 이미 보유한 증강은 애초에 후보에서 제외되고, 이번 호출
+ * 안에서 뽑힌 증강은 다음 슬롯에서 다시 뽑히지 않는다(3장 중복 방지). 특정 등급 풀이
+ * 비었거나(또는 전부 이미 보유 중이면) 다른 등급에서 대체되며, 전체 풀이 소진되면
+ * count보다 적게 반환될 수 있다(에러는 나지 않는다).
+ */
+export function rollAugmentChoices(pool: Augment[], owned: Augment[], round: number, count = 3): Augment[] {
+  const remaining = pool.filter((a) => !hasAugment(owned, a.id));
+  const byRarity: Record<AugmentRarity, Augment[]> = { silver: [], gold: [], prismatic: [] };
+  for (const a of remaining) byRarity[a.rarity].push(a);
+
+  const weights = rarityWeightsForRound(round);
+  const picks: Augment[] = [];
+
+  for (let i = 0; i < count; i++) {
+    const rarity = pickWeightedRarity(weights, byRarity);
+    if (!rarity) break;
+    const list = byRarity[rarity];
+    const idx = Math.floor(Math.random() * list.length);
+    picks.push(list[idx]);
+    list.splice(idx, 1);
+  }
+
+  return picks;
 }

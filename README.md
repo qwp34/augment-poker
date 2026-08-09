@@ -39,6 +39,14 @@
 | 카멜레온 | 프리즘 | 선택 즉시 | 내 홀카드 1장을 원하는 숫자/무늬로 자유롭게 변경 (1회성) | 멀티 전용 |
 | 당근이세요? | 골드 | 선택 즉시 | 상대 1명을 지목해 내 홀카드 1장과 상대 홀카드 1장을 맞교환 (1회성) | 멀티 전용 |
 
+**로그인 · 칩 영속성 (Supabase, 선택사항)**
+- 이메일/비밀번호 회원가입·로그인 (게스트 플레이도 그대로 유지, 로그인은 선택)
+- 회원가입 시 `profiles` 행 자동 생성(닉네임, 보유 칩 5,000 골드 기본값)
+- 멀티플레이 방 입장 시 보유 칩에서 바이인(5,000)을 차감해 시작, 칩이 부족하면 입장 거부 +
+  최소 금액 안내 / 게임 종료 시 최종 스택을 그대로 정산해 돌려줌
+- 칩 차감/정산은 전부 서버(Colyseus)가 계산해 반영 — 클라이언트는 자기 프로필을 읽기만
+  가능(RLS), 실제 쓰기는 service role 키를 쥔 서버만 호출 가능한 Postgres RPC로 제한
+
 **멀티플레이 (Colyseus 서버 권위 구조)**
 - 방 만들기 + 링크 공유 입장(`/room/:roomId`), 방장만 게임 시작 가능
 - 최대 4인, 부족한 좌석은 방장이 시작할 때 AI 봇으로 자동 채움
@@ -65,7 +73,8 @@
 - **AI 봇의 실제 LLM 연동**: 현재는 휴리스틱 폴백만 존재, Claude API 호출부는 TODO 주석만 있음
 - **재접속(reconnection)**: 연결이 끊기면 해당 좌석은 `connected: false`로 표시될 뿐 복귀 수단 없음
 - **사이드 팟**: 숏 올인 시 초과분 반환 로직 없음
-- 전적 저장(PostgreSQL)·룸 상태 영속화(Redis) 등 백엔드 확장은 본선 스코프
+- **친구 목록/소셜 기능**: 로그인은 붙였지만 친구 추가·초대 등은 이번 스코프에서 제외
+- 룸 상태 영속화(Redis) 등 서버 확장은 본선 스코프
 
 ## 기술 스택
 
@@ -74,12 +83,14 @@
 - [Zustand](https://github.com/pmndrs/zustand) — 싱글플레이 게임 상태 머신
 - [Framer Motion](https://www.framer.com/motion/) — 애니메이션
 - [colyseus.js](https://colyseus.io/) — 멀티플레이 서버 연결 클라이언트
+- [@supabase/supabase-js](https://supabase.com/docs/reference/javascript) — 로그인(Auth), 내 프로필 읽기(RLS)
 - [oxlint](https://oxc.rs/) — 린트
 - 폰트: [Black Han Sans](https://fonts.google.com/specimen/Black+Han+Sans), [Noto Sans KR](https://fonts.google.com/noto/specimen/Noto+Sans+KR) (Google Fonts CDN)
 
 **Backend** (`server/package.json`)
 - Node.js + TypeScript, [tsx](https://github.com/privatenumber/tsx)로 dev 실행
 - [Colyseus](https://colyseus.io/) 0.16 — 서버 권위 멀티플레이 프레임워크 (`@colyseus/schema`, `@colyseus/ws-transport`, `@colyseus/monitor`)
+- [@supabase/supabase-js](https://supabase.com/docs/reference/javascript) (service role) — 로그인 검증, 칩 차감/정산 RPC 호출
 - Express 5 — HTTP 헬스체크(`/health`)
 - dotenv, cors
 
@@ -99,7 +110,8 @@ augment-poker/
 │   │   ├── handEvaluator.ts     # 7장 중 최고 5장 판정 (조커 지원)
 │   │   ├── augmentEngine.ts     # JSON 기반 증강 룰 엔진
 │   │   └── botAI.ts             # 싱글플레이 봇 베팅 결정 (휴리스틱)
-│   ├── data/augments.json     # 증강 8종 정의 — 여기 항목 추가만으로 증강이 늘어남
+│   ├── data/augments.json     # 증강 정의 — 여기 항목 추가만으로 증강이 늘어남
+│   ├── data/augmentRarityTable.json # 라운드별 등급(실버/골드/프리즘) 등장 확률 — 숫자만 바꾸면 밸런스 조정
 │   ├── store/gameStore.ts     # Zustand — 싱글플레이 상태 머신
 │   ├── net/                   # 멀티플레이 연결
 │   │   ├── colyseusClient.ts    # Colyseus 클라이언트 싱글톤, 방 공유 링크 유틸
@@ -119,7 +131,7 @@ augment-poker/
     │   ├── schema/PokerState.ts # 동기화 스키마 (PokerState/PlayerState/CardSchema)
     │   ├── rooms/PokerRoom.ts   # 입장/퇴장·블라인드·딜링·베팅·증강 phase·쇼다운·타임아웃 (핵심 로직)
     │   ├── engine/               # 서버 측 게임 로직 (+ *.test.ts 유닛 테스트)
-    │   └── data/augments.json
+    │   └── data/augments.json, augmentRarityTable.json
     └── scripts/smoke.ts        # 클라이언트 2명을 실제로 접속시켜 전체 루프를 검증하는 통합 테스트
 ```
 
@@ -149,6 +161,34 @@ cp .env.example .env
 # 서버 — PORT (기본값 2567)
 cp server/.env.example server/.env
 ```
+
+`VITE_SUPABASE_*`/`SUPABASE_*`는 아래 "Supabase 설정" 섹션 참고 — 비워두면 로그인 버튼이
+아예 안 보이고 게스트 플레이만 되며(기존 동작과 동일), 서버도 정상 기동한다.
+
+### Supabase 설정 (로그인 · 칩 영속성, 선택사항)
+
+로그인/칩 영속성은 완전히 선택 기능이라 이 섹션을 건너뛰어도 게스트로 플레이하는 덴
+아무 지장이 없습니다. 붙이려면:
+
+1. [supabase.com](https://supabase.com)에서 프로젝트를 하나 만듭니다.
+2. 프로젝트의 SQL Editor에 [`supabase/schema.sql`](supabase/schema.sql) 전체를 붙여넣고 실행합니다
+   (`profiles` 테이블 + RLS + 회원가입 트리거 + 칩 차감/정산용 RPC 2개가 한 번에 생성됩니다).
+3. 프로젝트 설정 > API 에서 값을 확인해 채웁니다:
+   ```bash
+   # .env (클라이언트, 루트) — anon key는 RLS로 보호되므로 공개돼도 안전
+   VITE_SUPABASE_URL=https://xxxx.supabase.co
+   VITE_SUPABASE_ANON_KEY=eyJ...
+
+   # server/.env (서버) — service role key는 RLS를 완전히 우회한다. 절대 커밋/공유 금지,
+   # 클라이언트 코드/번들에 들어가서도 안 된다.
+   SUPABASE_URL=https://xxxx.supabase.co
+   SUPABASE_SERVICE_ROLE_KEY=eyJ...
+   ```
+4. `pnpm dev`로 재기동하면 타이틀 2단계 메뉴 화면 우측 상단에 "로그인" 버튼이 나타납니다.
+
+칩 정산은 전부 서버(Colyseus)가 계산해 Supabase에 반영하며, 클라이언트는 자기 프로필을
+읽을 수만 있고(RLS) 쓸 수는 없습니다 — 실제로 칩이 바뀌었는지는 Supabase 대시보드의
+`profiles` 테이블에서 직접 확인하는 게 가장 확실합니다.
 
 ### 3. 실행
 
