@@ -40,15 +40,23 @@ const SEAT_DIR: Record<number, { x: number; y: number }> = {
   3: { x: 320, y: 0 },
 };
 // ── 쇼다운 순차 공개 + 러시안 룰렛 연출 타이밍(ms) ──────────────────────────────
-// 서버 PokerRoom.ts의 SHOWDOWN_RESULT_DELAY_MS/ROULETTE_RESULT_DELAY_MS는 이 타임라인이
-// 전부 끝날 때까지 다음 라운드로 넘어가지 않도록(= 결과 배너가 지워지지 않도록) 여유를
-// 두고 맞춰져 있다 — 아래 값을 크게 바꾸면 서버 쪽 지연도 함께 조정해야 한다.
+// 서버 PokerRoom.ts의 SHOWDOWN_RESULT_DELAY_MS(12000)/ROULETTE_RESULT_DELAY_MS(18000),
+// useMultiplayerRoom.ts의 lastResult 안전장치 타이머(13000/19000)는 이 타임라인이 전부
+// 끝날 때까지 다음 라운드로 넘어가거나 배너가 지워지지 않도록 여유를 두고 맞춰져 있다 —
+// 아래 값을 크게 바꾸면(특히 SD_TURN_DELAY_MS/SD_RIVER_DELAY_MS/SD_RESULT_DELAY_MS나
+// RR_* 상수) 세 곳 모두 함께 조정해야 한다.
 const SD_ALLIN_STAGGER_MS = 500;
 const SD_TEXT_MS = 1300;
 const SD_TEXT_GAP_MS = 150;
 const SD_BOARD_STAGGER_MS = 450;
 const SD_BOARD_SETTLE_MS = 350;
 const SD_HOLE_STAGGER_MS = 500;
+// 홀카드 공개 → 턴 → 리버 → 결과 표시 사이의 간격 — 서버가 알려주는 revealedBoardCount(올인
+// 확정 시점에 이미 정상 공개돼 있던 보드 카드 수)부터 이어서 공개하므로, 이미 봤던 스트리트
+// (예: 플랍까지 베팅하다 올인)는 다시 리캡되지 않고 이 간격도 그 지점부터 적용된다.
+const SD_TURN_DELAY_MS = 1200;
+const SD_RIVER_DELAY_MS = 1400;
+const SD_RESULT_DELAY_MS = 1600;
 const RR_ORIGINAL_MS = 2000;
 const RR_COUNTDOWN_SLOW_MS = 1300;
 const RR_COUNTDOWN_FAST_MS = 1000;
@@ -832,10 +840,14 @@ export function PokerTable({
     // 정상적으로 리버까지 매 스트리트 베팅하며 도달한 쇼다운은 보드가 이미 전부 공개돼
     // 있으므로 리플레이 없이 홀카드만 공개한다.
     const isRunout = !!lastResult.runout;
+    // 올인이 확정된 시점에 이미 정상 공개돼 있던 보드 카드 수(서버가 계산해 보내준 값) —
+    // 이 장수는 다시 리캡하지 않고 그대로 유지한 채, 그 이후(턴/리버)만 새로 공개한다.
+    // 구버전 서버(필드 미포함) 호환을 위해 없으면 0(기존처럼 전체 리캡)으로 취급.
+    const preRevealedBoardCount = Math.max(0, Math.min(boardCount, lastResult.revealedBoardCount ?? 0));
 
     setRevealedHoleIds(new Set());
     setShowdownTextOn(false);
-    setBoardRevealCount(isRunout ? 0 : boardCount);
+    setBoardRevealCount(isRunout ? preRevealedBoardCount : boardCount);
     setBoardReplaying(isRunout);
     setRouletteStage('none');
     setBulletRevealed(false);
@@ -844,17 +856,7 @@ export function PokerTable({
     let t = 0;
 
     if (isRunout) {
-      // a) 올인한 플레이어부터 홀카드 순차 공개
-      allIn.forEach((id) => {
-        at(t, () => {
-          playSound('cardDeal');
-          setRevealedHoleIds((prev) => new Set(prev).add(id));
-        });
-        t += SD_ALLIN_STAGGER_MS;
-      });
-      if (allIn.length > 0) t += 200;
-
-      // b) "SHOW DOWN" 텍스트
+      // a) "SHOW DOWN" 텍스트 — 순차 공개가 시작됨을 먼저 알린다
       at(t, () => {
         playSound('showdownSting');
         setShowdownTextOn(true);
@@ -863,19 +865,16 @@ export function PokerTable({
       at(t, () => setShowdownTextOn(false));
       t += SD_TEXT_GAP_MS;
 
-      // c) 보드를 왼쪽부터 한 장씩 순차 공개(리캡 플립)
-      for (let i = 0; i < boardCount; i++) {
-        const idx = i;
+      // b) 생존 플레이어들의 홀카드부터 공개(올인한 쪽 먼저, 이어서 콜만 하고 살아남은 쪽) —
+      // 턴/리버보다 먼저 보여줘 "이제 무슨 패로 겨루는지"가 카드 공개보다 앞서 드러나게 한다.
+      allIn.forEach((id) => {
         at(t, () => {
           playSound('cardDeal');
-          setBoardRevealCount((c) => Math.max(c, idx + 1));
+          setRevealedHoleIds((prev) => new Set(prev).add(id));
         });
-        t += SD_BOARD_STAGGER_MS;
-      }
-      t += SD_BOARD_SETTLE_MS;
-      at(t, () => setBoardReplaying(false));
-
-      // d) 나머지 플레이어 홀카드 순차 공개
+        t += SD_ALLIN_STAGGER_MS;
+      });
+      if (allIn.length > 0) t += 200;
       rest.forEach((id) => {
         at(t, () => {
           playSound('cardDeal');
@@ -883,7 +882,37 @@ export function PokerTable({
         });
         t += SD_HOLE_STAGGER_MS;
       });
-      t += rest.length > 0 ? 250 : 100;
+      t += allIn.length + rest.length > 0 ? 250 : 100;
+
+      // c) 프리플랍 올인 등으로 플랍조차 아직 공개된 적이 없으면(preRevealedBoardCount < 3),
+      // "플랍까지는 공개된" 기준선을 맞추기 위해 플랍 3장만 먼저 빠르게 공개한다 — 이 구간은
+      // 아래 턴/리버 딜레이(SD_TURN_DELAY_MS/SD_RIVER_DELAY_MS)에 포함되지 않는 별도 준비 단계.
+      if (preRevealedBoardCount < 3) {
+        for (let i = preRevealedBoardCount; i < 3; i++) {
+          const idx = i;
+          at(t, () => {
+            playSound('cardDeal');
+            setBoardRevealCount((c) => Math.max(c, idx + 1));
+          });
+          t += SD_BOARD_STAGGER_MS;
+        }
+        t += SD_BOARD_SETTLE_MS;
+      }
+
+      // d) 턴 → 리버 — 이미 플랍까지 공개된 지점부터, 아직 안 나온 카드만 순서대로 공개한다.
+      // 플랍 올인(preRevealedBoardCount===3)이면 턴/리버 둘 다, 턴 올인(===4)이면 리버 한 장만
+      // 이 구간에서 새로 나온다. 첫 번째 신규 카드는 SD_TURN_DELAY_MS, 두 번째는 SD_RIVER_DELAY_MS
+      // 뒤에 공개된다.
+      const remainingDelays = [SD_TURN_DELAY_MS, SD_RIVER_DELAY_MS];
+      for (let idx = Math.max(preRevealedBoardCount, 3); idx < boardCount; idx++) {
+        t += remainingDelays[idx - Math.max(preRevealedBoardCount, 3)] ?? SD_RIVER_DELAY_MS;
+        const revealIdx = idx;
+        at(t, () => {
+          playSound('cardDeal');
+          setBoardRevealCount((c) => Math.max(c, revealIdx + 1));
+        });
+      }
+      at(t, () => setBoardReplaying(false));
     } else {
       // 일반 쇼다운(리버까지 정상 베팅) — SHOW DOWN 연출/보드 리플레이 없이 홀카드만 공개
       contenders.forEach(({ sessionId }) => {
@@ -926,7 +955,13 @@ export function PokerTable({
 
       at(t, () => setRouletteStage('none'));
       t += 250;
+    } else if (isRunout) {
+      // 리버 공개 후 결과 배너가 뜨기까지의 여유 — 룰렛이 없을 때만 적용(있으면 위 룰렛
+      // 시퀀스 전체가 이 자리를 대신한다)
+      t += SD_RESULT_DELAY_MS;
     } else {
+      // 정상적으로 리버까지 베팅하며 도달한 쇼다운 — 보드 리플레이가 없어 홀카드 공개
+      // 직후 곧바로 결과를 보여줘도 자연스러우니 기존과 동일하게 짧게 둔다.
       t += 150;
     }
 

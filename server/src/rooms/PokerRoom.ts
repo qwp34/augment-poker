@@ -61,11 +61,13 @@ const RESULT_DELAY_MS = 5_000;
 /** 쇼다운 순차 공개 연출(클라이언트, PokerTable.tsx)이 다 재생될 시간을 벌어주는 지연 —
  * 이 시간이 끝나야 beginRound()가 phase를 'augment_select'로 바꾸고, 그 phase 전환이
  * 클라이언트의 결과 배너를 지운다(useMultiplayerRoom.ts). 클라이언트 연출 타임라인과
- * 맞춰 여유를 두고 늘렸다 — 정확히 맞출 필요는 없고, 연출보다 짧지만 않으면 된다. */
-const SHOWDOWN_RESULT_DELAY_MS = 8_000;
+ * 맞춰 여유를 두고 늘렸다 — 정확히 맞출 필요는 없고, 연출보다 짧지만 않으면 된다.
+ * (홀카드 공개 → 턴 1200ms → 리버 1400ms → 결과 1600ms 타임라인 기준 최대 약 9.8초 +
+ * 배너를 읽을 여유를 더해 12초로 잡았다 — 계산 근거는 PokerTable.tsx의 SD_* 상수 주석 참고.) */
+const SHOWDOWN_RESULT_DELAY_MS = 12_000;
 /** 러시안 룰렛이 발동한 쇼다운 — 순차 공개 연출 뒤에 원래 족보/카운트다운/총성 연출까지
- * 이어지므로 훨씬 더 오래 걸린다. */
-const ROULETTE_RESULT_DELAY_MS = 15_000;
+ * 이어지므로 훨씬 더 오래 걸린다(최대 약 14.9초 + 여유 → 18초). */
+const ROULETTE_RESULT_DELAY_MS = 18_000;
 const BOT_ACT_DELAY_MIN_MS = 600;
 const BOT_ACT_DELAY_MAX_MS = 1_400;
 /** 봇의 대상 지정형 증강 자동 처리 딜레이 — 여러 명이 몰려도 한 명씩 자연스럽게 순서대로 보이도록 */
@@ -1308,11 +1310,15 @@ export class PokerRoom extends Room<PokerState> {
     // "SHOW DOWN" 연출 + 보드 순차 공개를 재생한다. 정상적으로 리버까지 매 스트리트
     // 베팅하며 도달한 쇼다운은 board.length가 이미 5라 여기서 건너뛴 스트리트가 없다.
     const isRunout = this.board.length < 5;
+    // dealBoard()로 나머지 카드를 채우기 전, "올인이 확정된 시점에 이미 몇 장이 정상
+    // 베팅으로 공개돼 있었는지"를 스냅샷해둔다 — 클라이언트가 이 값을 받아야 이미 봤던
+    // 스트리트(예: 플랍 3장)를 다시 리캡하지 않고 그 이후(턴/리버)만 새로 공개할 수 있다.
+    const preRunoutBoardCount = this.board.length;
     if (isRunout) this.dealBoard(5 - this.board.length);
-    this.showdown(isRunout);
+    this.showdown(isRunout, preRunoutBoardCount);
   }
 
-  private showdown(isRunout = false) {
+  private showdown(isRunout = false, revealedBoardCount = 5) {
     const st = this.state;
     this.setPhase('showdown');
     this.setActivePlayer(null);
@@ -1398,6 +1404,10 @@ export class PokerRoom extends Room<PokerState> {
       // 전원 올인 등으로 남은 스트리트를 건너뛰고 온 쇼다운인지 — 이때만 클라이언트가
       // "SHOW DOWN" 텍스트 + 보드 순차 공개 연출을 재생한다 (runoutAndShowdown 참고)
       runout: isRunout,
+      // 올인이 확정된 시점에 이미 정상 공개돼 있던 보드 카드 수(0/3/4) — runout이 아니면
+      // 항상 5(전부 이미 공개된 상태). 클라이언트는 이 값부터 이어서(예: 3이면 턴부터)
+      // 순차 공개하고, 그 이전 카드는 다시 리캡하지 않는다.
+      revealedBoardCount,
     });
 
     this.setPhase('round_end');

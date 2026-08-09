@@ -134,6 +134,11 @@ export interface ShowdownResult {
    *  텍스트 + 보드 순차 공개 연출을 재생한다. 정상적으로 리버까지 베팅하며 도달한
    *  쇼다운은 false(또는 미포함 — 구버전 서버 호환을 위해 옵셔널) */
   runout?: boolean;
+  /** runout일 때, 올인이 확정된 시점에 이미 정상 공개돼 있던 보드 카드 수(0/3/4) —
+   *  runout이 아니면 5(전부 이미 공개된 상태). 클라이언트는 이 값부터 이어서(예: 3이면
+   *  턴부터) 순차 공개하고 그 이전 스트리트는 다시 리캡하지 않는다(구버전 서버 호환을
+   *  위해 옵셔널 — 없으면 PokerTable.tsx가 0으로 취급해 기존처럼 처음부터 리캡한다). */
+  revealedBoardCount?: number;
 }
 
 /** 서버가 보내는 짧은 시스템 알림(밑장빼기/보드 리셋 등) — 매번 새 id라 같은 문구라도 토스트가 다시 뜬다 */
@@ -485,12 +490,14 @@ export function useMultiplayerRoom(playerName: string, accessToken?: string) {
   }, [gameState?.phase]);
 
   // 안전장치 — 어떤 사유로든 위 조건에서 못 지워지더라도, 결과 배너는 일정 시간 뒤 무조건 사라진다.
-  // 폴드 승은 즉시 배너만 뜨니 짧게, 쇼다운은 순차 공개 연출이 다 재생될 시간을, 러시안 룰렛이
-  // 발동한 쇼다운은 그 뒤에 이어지는 원래 족보/카운트다운/총성 연출까지 감안해 더 길게 둔다
-  // (PokerRoom.ts의 SHOWDOWN_RESULT_DELAY_MS/ROULETTE_RESULT_DELAY_MS와 호흡을 맞춘 값).
+  // 폴드 승은 즉시 배너만 뜨니 짧게, 쇼다운은 순차 공개 연출(홀카드 → 턴 → 리버 → 결과)이
+  // 다 재생될 시간을, 러시안 룰렛이 발동한 쇼다운은 그 뒤에 이어지는 원래 족보/카운트다운/
+  // 총성 연출까지 감안해 더 길게 둔다 — PokerRoom.ts의 SHOWDOWN_RESULT_DELAY_MS(12000)/
+  // ROULETTE_RESULT_DELAY_MS(18000)보다 항상 더 길게 잡아, 서버가 라운드를 넘기기 전에
+  // 이 타이머가 먼저 배너를 지워버리는 일이 없게 한다.
   useEffect(() => {
     if (!lastResult) return;
-    const ms = lastResult.byFold ? 6000 : lastResult.removedCommunityCardId ? 16000 : 9000;
+    const ms = lastResult.byFold ? 6000 : lastResult.removedCommunityCardId ? 19000 : 13000;
     const t = setTimeout(() => setLastResult(null), ms);
     return () => clearTimeout(t);
   }, [lastResult]);
