@@ -36,7 +36,7 @@
   {
     "id": "aug_royal_prophecy",
     "name": "로열의 예언",
-    "rarity": "prismatic",
+    "rarity": "gold",
     "trigger": "on_shuffle",
     "effect": { "type": "shuffle_bias", "value": 0.15 },
     "description": "셔플 시 낮은 확률로 운명이 개입한다... (연출용 — 브로드웨이 카드가 손에 들어올 확률 소폭 상승)"
@@ -100,18 +100,10 @@
   {
     "id": "aug_reset_button",
     "name": "리셋 버튼",
-    "rarity": "gold",
+    "rarity": "prismatic",
     "trigger": "on_turn",
     "effect": { "type": "reset_board", "value": 1 },
     "description": "라운드 중 1회, 본인 차례에 현재 커뮤니티 카드를 전부 회수하고 다시 딜링한다 (베팅/팟은 그대로). 플랍(3번째 보드 카드) 공개 시점까지만 사용 가능"
-  },
-  {
-    "id": "aug_prism_bill",
-    "name": "프리즘 청구서",
-    "rarity": "prismatic",
-    "trigger": "on_pick",
-    "effect": { "type": "freeze_gold_quest", "value": 20 },
-    "description": "선택 즉시 빅블라인드 20배가 동결된다(보유 칩에서 차감, 베팅 불가). 이후 누적 베팅액이 빅블라인드 40배에 도달하면 동결금을 전액 반환받고 다음 증강 선택에서 프리즘 등급만 제시된다. 게임이 끝날 때까지 미완료면 동결금은 소멸한다"
   },
   {
     "id": "aug_deep_think",

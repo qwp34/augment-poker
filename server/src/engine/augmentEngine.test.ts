@@ -38,7 +38,6 @@ const sinisterEye = byId('aug_sinister_eye'); // 음침한 눈 — reveal_oppone
 const chameleon = byId('aug_chameleon'); // 카멜레온 — edit_own_card, on_pick(일회성)
 const carrot = byId('aug_carrot'); // 당근이세요? — swap_with_opponent, on_hand_start
 const callingShot = byId('aug_calling_shot'); // 예고 홈런 — declare_hand, on_hand_start(매 핸드 재발동)
-const prismBill = byId('aug_prism_bill'); // 프리즘 청구서 — freeze_gold_quest, on_pick(부수효과는 PokerRoom 전용)
 const deepThink = byId('aug_deep_think'); // 장고의 시간 — extend_timer, on_turn(게임당 1회는 PlayerState.deepThinkUsed로 관리)
 
 function card(suit: Card['suit'], rank: Card['rank'], id = `${suit}-${rank}`): Card {
@@ -118,8 +117,8 @@ describe('needsTargetSelection — 대상 지정형 증강 판별', () => {
     assert.equal(needsTargetSelection(callingShot), true);
   });
 
-  it('기존 5종 + 프리즘 청구서/장고의 시간은 대상 지정이 필요 없다', () => {
-    for (const a of [flushBoost, cardSwap, allinSnipe, goldenFlip, royalProphecy, prismBill, deepThink]) {
+  it('기존 5종 + 장고의 시간은 대상 지정이 필요 없다', () => {
+    for (const a of [flushBoost, cardSwap, allinSnipe, goldenFlip, royalProphecy, deepThink]) {
       assert.equal(needsTargetSelection(a), false, `${a.name}은 대상 지정형이 아니어야 함`);
     }
   });
@@ -167,10 +166,6 @@ describe('isOneShotAugment — 일회성(on_pick) 증강 판별', () => {
     for (const a of [flushBoost, cardSwap, allinSnipe, goldenFlip, royalProphecy, sinisterEye, carrot, callingShot, deepThink]) {
       assert.equal(isOneShotAugment(a), false, `${a.name}은 일회성이 아니어야 함`);
     }
-  });
-
-  it('프리즘 청구서는 trigger가 on_pick이라 isOneShotAugment 기준으로는 일회성으로 분류된다 (실제 소모 처리는 없음 — 선택 즉시 부수효과만 발동)', () => {
-    assert.equal(isOneShotAugment(prismBill), true);
   });
 });
 
@@ -300,7 +295,7 @@ describe('rollAugmentChoices — 라운드별 가중 등급 뽑기', () => {
     assert.equal(choices.length, 2);
   });
 
-  it('풀이 특정 등급뿐이면(프리즘 청구서 보상 등) 라운드와 무관하게 그 등급만 나온다', () => {
+  it('풀이 특정 등급뿐이면 라운드와 무관하게 그 등급만 나온다', () => {
     const prismaticOnly = POOL.filter((a) => a.rarity === 'prismatic');
     const choices = rollAugmentChoices(prismaticOnly, [], 1, 3); // 1라운드는 프리즘 5%뿐이지만
     assert.equal(choices.length, 3);

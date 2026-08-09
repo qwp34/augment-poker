@@ -43,7 +43,6 @@ export type AugmentEffectType =
   | 'extra_hole_card'
   | 'rotate_hole_cards'
   | 'reset_board'
-  | 'freeze_gold_quest'
   | 'extend_timer'
   | 'declare_hand';
 

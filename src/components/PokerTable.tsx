@@ -256,12 +256,6 @@ function DiamondSeat({
                 🎯 예고: {CATEGORY_SHORT_KO[player.declaredHandCategory as HandCategory] ?? player.declaredHandCategory}
               </span>
             )}
-            {/* 프리즘 청구서 — 동결 중인 골드와 목표까지의 누적 베팅 진행도 */}
-            {player.frozenGold > 0 && (
-              <span className="mp-seat-prism-progress" title="프리즘 청구서 — 완료 시 동결금 전액 반환">
-                💠 프리즘 청구서 — {player.frozenGoldProgress.toLocaleString()} / {player.frozenGoldTarget.toLocaleString()}골드
-              </span>
-            )}
           </div>
           <div className="mp-seat-cards">
             {isMe

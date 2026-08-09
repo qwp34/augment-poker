@@ -67,12 +67,6 @@ export class PlayerState extends Schema {
    * 문자열로 돌아간다 — 다음 핸드가 시작되면 같은 증강이라도 다시 채워진다(1회성 아님).
    */
   @type('string') pendingTargetAugment = '';
-  /** 프리즘 청구서 — 지금 동결 중인 골드(0이면 보유 중이 아니거나 이미 정산됨) */
-  @type('int32') frozenGold = 0;
-  /** 프리즘 청구서 — 완료 목표(누적 베팅액). frozenGold와 함께 0이면 진행 중 아님 */
-  @type('int32') frozenGoldTarget = 0;
-  /** 프리즘 청구서 — 지금까지 누적된 베팅액 (게임 내내 유지, 라운드 넘어가도 안 비워짐) */
-  @type('int32') frozenGoldProgress = 0;
   /** 장고의 시간 — 게임 전체 1회 사용 여부 (라운드가 지나도 절대 초기화되지 않음) */
   @type('boolean') deepThinkUsed = false;
   /** 예고 홈런 — 이번 핸드에 선언한 목표 족보 (빈 문자열이면 미선언). 매 핸드 시작 시 초기화 */

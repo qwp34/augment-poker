@@ -62,12 +62,6 @@ export interface ClientPlayer {
   revealedHole: ClientCard[];
   augmentIds: string[];
   augmentChoices: string[];
-  /** 프리즘 청구서 — 지금 동결 중인 골드(0이면 보유 중이 아니거나 이미 정산됨) */
-  frozenGold: number;
-  /** 프리즘 청구서 — 완료 목표(누적 베팅액) */
-  frozenGoldTarget: number;
-  /** 프리즘 청구서 — 지금까지 누적된 베팅액 */
-  frozenGoldProgress: number;
   /** 장고의 시간 — 게임 전체 1회 사용 여부 */
   deepThinkUsed: boolean;
   /** 예고 홈런 — 이번 핸드에 선언한 목표 족보 (빈 문자열이면 미선언) */
@@ -250,9 +244,6 @@ function toClientPlayer(p: {
   revealedHole: Iterable<{ id: string; suit: string; rank: number; isJoker?: boolean }> | null | undefined;
   augmentIds: Iterable<string> | null | undefined;
   augmentChoices: Iterable<string> | null | undefined;
-  frozenGold: number;
-  frozenGoldTarget: number;
-  frozenGoldProgress: number;
   deepThinkUsed: boolean;
   declaredHandCategory: string;
 }): ClientPlayer {
@@ -275,9 +266,6 @@ function toClientPlayer(p: {
     revealedHole: toArray(p.revealedHole).map(toClientCard),
     augmentIds: toArray(p.augmentIds),
     augmentChoices: toArray(p.augmentChoices),
-    frozenGold: p.frozenGold,
-    frozenGoldTarget: p.frozenGoldTarget,
-    frozenGoldProgress: p.frozenGoldProgress,
     deepThinkUsed: p.deepThinkUsed,
     declaredHandCategory: p.declaredHandCategory,
   };

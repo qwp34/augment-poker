@@ -73,8 +73,6 @@ const BOT_ACT_DELAY_MAX_MS = 1_400;
 /** 봇의 대상 지정형 증강 자동 처리 딜레이 — 여러 명이 몰려도 한 명씩 자연스럽게 순서대로 보이도록 */
 const BOT_TARGET_RESOLVE_DELAY_MIN_MS = 700;
 const BOT_TARGET_RESOLVE_DELAY_MAX_MS = 1_400;
-/** 프리즘 청구서 — 완료(퀘스트 목표) 기준은 동결액의 몇 배인지. 동결 20배 → 목표 40배(= 2배) */
-const PRISM_BILL_TARGET_MULTIPLIER = 2;
 /** 예고 홈런 — 선언한 족보 적중 시 보너스 배율(획득한 팟의 N배를 추가 지급) */
 const PROPHECY_BONUS_MULTIPLIER = 3;
 /** 예고 홈런 보너스 상한 — 팟이 매우 커진 상황에서 보너스 한 방에 게임이 끝나버리는 게
@@ -157,9 +155,6 @@ export class PokerRoom extends Room<PokerState> {
   private targetPhaseOrder: string[] = [];
   /** startHand()에서 계산한 이번 핸드의 프리플랍 첫 액션 좌석 — augment_target을 거친 뒤에도 써야 해서 보관 */
   private handFirstActorSeat = -1;
-  /** 프리즘 청구서를 완료해 "다음 증강 선택은 프리즘만" 보상이 예약된 세션 id 집합 —
-   * beginRound()가 매 라운드 시작 시 한 번 소비(delete)하고 곧바로 잊는다. */
-  private prismBillRewardPending = new Set<string>();
   /** 현재 턴이 자동으로 넘어가는 시각(ms epoch) — 장고의 시간으로 타이머를 연장할 때
    * "지금까지 얼마나 남았는지"를 계산하는 기준이 된다. armTurnTimer()가 매번 갱신한다. */
   private turnDeadline = 0;
@@ -415,11 +410,7 @@ export class PokerRoom extends Room<PokerState> {
     for (const p of this.seatOrder()) {
       p.augmentChoices.clear();
       if (!p.connected || p.stack <= 0) continue;
-      // 프리즘 청구서를 방금 완료한 보상 — 딱 이번 한 번만 프리즘 등급 증강 3개만 제시한다
-      const pool = this.prismBillRewardPending.delete(p.sessionId)
-        ? AUGMENT_POOL.filter((a) => a.rarity === 'prismatic')
-        : this.affordableAugmentPool(p);
-      const choices = rollAugmentChoices(pool, this.ownedAugments(p), this.state.round, 3);
+      const choices = rollAugmentChoices(AUGMENT_POOL, this.ownedAugments(p), this.state.round, 3);
       if (choices.length === 0) continue;
       anyChoices = true;
       this.pendingChoices.set(p.sessionId, choices);
@@ -433,29 +424,12 @@ export class PokerRoom extends Room<PokerState> {
     this.augmentTimer = this.clock.setTimeout(() => this.autoPickAugments(), AUGMENT_TIMEOUT_MS);
   }
 
-  /** 프리즘 청구서(선택 즉시 빅블라인드 20배 동결)를 감당할 수 없는 스택이면 애초에 선택지에서 뺀다 */
-  private affordableAugmentPool(p: PlayerState): Augment[] {
-    return AUGMENT_POOL.filter((a) => a.effect.type !== 'freeze_gold_quest' || p.stack >= this.prismBillFreezeAmount(a));
-  }
-
-  private prismBillFreezeAmount(augment: Augment): number {
-    return Math.round(this.state.bigBlind * augment.effect.value);
-  }
-
   /**
    * 증강을 실제로 획득(augmentIds에 추가)하는 공통 지점 — 대상 지정 없이 "고르는 즉시"
-   * 부수효과가 있는 증강(프리즘 청구서)을 여기서 함께 처리한다. affordableAugmentPool이
-   * 미리 걸러주므로 여기 도달했다는 것 자체가 이미 감당 가능한 금액이라는 뜻이다.
+   * 부수효과가 있는 증강이 생기면 여기서 함께 처리한다(지금은 없음, 훅만 유지).
    */
   private grantAugment(p: PlayerState, augment: Augment) {
     p.augmentIds.push(augment.id);
-    if (augment.effect.type === 'freeze_gold_quest') {
-      const freeze = this.prismBillFreezeAmount(augment);
-      p.stack -= freeze;
-      p.frozenGold = freeze;
-      p.frozenGoldTarget = freeze * PRISM_BILL_TARGET_MULTIPLIER;
-      p.frozenGoldProgress = 0;
-    }
   }
 
   /**
@@ -546,8 +520,8 @@ export class PokerRoom extends Room<PokerState> {
       p.revealedHole.clear();
       p.pendingTargetAugment = '';
       // 예고 홈런 — 선언은 매 핸드 새로 한다(다음 beginAugmentTargetPhase에서 다시 큐에 담김).
-      // frozenGold*/deepThinkUsed는 여기서 절대 건드리지 않는다 — 라운드가 아니라 게임 전체
-      // 단위로 유지돼야 하는 값이다.
+      // deepThinkUsed는 여기서 절대 건드리지 않는다 — 라운드가 아니라 게임 전체 단위로
+      // 유지돼야 하는 값이다.
       p.declaredHandCategory = '';
     }
 
@@ -1123,26 +1097,6 @@ export class PokerRoom extends Room<PokerState> {
     p.streetBet += pay;
     if (p.streetBet > this.state.currentBet) this.state.currentBet = p.streetBet;
     if (p.stack === 0) p.allIn = true;
-    this.trackPrismBillProgress(p, pay);
-  }
-
-  /**
-   * 프리즘 청구서 — 누적 베팅액이 목표에 도달하면 동결 골드를 전액 반환하고, 다음 증강
-   * 선택에서 프리즘 등급만 제시되도록 예약한다. commit()이 블라인드/콜/레이즈/올인 등
-   * 모든 칩 이동의 유일한 통로라 여기 한 곳에서만 훅을 걸면 빠짐없이 집계된다.
-   */
-  private trackPrismBillProgress(p: PlayerState, amount: number) {
-    if (p.frozenGold <= 0 || amount <= 0) return; // 진행 중인 퀘스트가 없으면 무시
-    p.frozenGoldProgress += amount;
-    if (p.frozenGoldProgress < p.frozenGoldTarget) return;
-
-    const refund = p.frozenGold;
-    p.stack += refund;
-    p.frozenGold = 0;
-    p.frozenGoldTarget = 0;
-    p.frozenGoldProgress = 0;
-    this.prismBillRewardPending.add(p.sessionId);
-    this.broadcast('notice', { text: `💠 ${p.name}님의 프리즘 청구서 완료! ${refund.toLocaleString()}골드 반환` });
   }
 
   /** 레이즈 발생 시 다른 플레이어들이 다시 행동해야 함 */
