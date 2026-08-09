@@ -63,6 +63,20 @@ function randomGuestNickname(): string {
   return `플레이어${suffix}`;
 }
 
+/**
+ * crypto.randomUUID()는 보안 컨텍스트(HTTPS 또는 localhost)에서만 존재한다 — LAN IP로
+ * http:// 접속한 환경(비보안 컨텍스트)에서는 crypto.randomUUID가 아예 undefined라 호출
+ * 시 TypeError가 난다. 게스트 id는 실제 신원 증명이 아니라 클라이언트 메모리에서만
+ * 쓰이는 임시 식별자라 암호학적 무작위성이 필요 없으므로, 이런 환경에서는 Date.now()
+ * + Math.random() 기반 폴백으로 대체한다.
+ */
+function generateId(): string {
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+    return crypto.randomUUID();
+  }
+  return 'guest-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 10);
+}
+
 async function fetchProfile(userId: string): Promise<AuthProfile | null> {
   if (!supabase) return null;
   const { data, error } = await supabase.from('profiles').select('nickname, chips').eq('id', userId).single();
@@ -131,7 +145,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   startGuest: () => {
     set({
       guest: {
-        id: crypto.randomUUID(),
+        id: generateId(),
         nickname: randomGuestNickname(),
         chips: 1000,
       },
