@@ -117,6 +117,12 @@ export interface NoticeEvent {
   id: number;
 }
 
+/** 대풍년처럼 화면 전체에 크게 알려야 하는 이벤트 — 작은 토스트(NoticeEvent)로는 눈에 띄지 않아 별도 타입으로 분리 */
+export interface BigAnnouncementEvent {
+  text: string;
+  id: number;
+}
+
 export interface GameOverInfo {
   reason: string;
   standings: { sessionId: string; name: string; stack: number; connected: boolean }[];
@@ -282,6 +288,9 @@ export function useMultiplayerRoom(playerName: string) {
   /** 서버의 짧은 시스템 알림(밑장빼기 사용/보드 리셋 등) — 토스트로 표시 */
   const [noticeEvent, setNoticeEvent] = useState<NoticeEvent | null>(null);
   const noticeIdRef = useRef(0);
+  /** 대풍년처럼 화면 전체에 크게 알려야 하는 이벤트 — 큰 배너로 2~3초 표시 */
+  const [bigAnnouncement, setBigAnnouncement] = useState<BigAnnouncementEvent | null>(null);
+  const bigAnnouncementIdRef = useRef(0);
 
   // 최신 닉네임을 콜백 의존성 없이 읽기 위한 ref (닉네임 입력 중 재렌더링돼도 콜백 identity가 안정적으로 유지되도록)
   const playerNameRef = useRef(playerName);
@@ -489,6 +498,20 @@ export function useMultiplayerRoom(playerName: string) {
     };
   }, [room]);
 
+  // 대풍년처럼 화면 전체에 크게 알려야 하는 이벤트 — 전원에게 오는 큰 배너용 브로드캐스트
+  useEffect(() => {
+    if (!room) {
+      setBigAnnouncement(null);
+      return;
+    }
+    const off = room.onMessage('bigAnnouncement', (payload: { text: string }) =>
+      setBigAnnouncement({ text: payload.text, id: ++bigAnnouncementIdRef.current }),
+    );
+    return () => {
+      off?.();
+    };
+  }, [room]);
+
   /** 서버가 뽑아 보낸 증강 후보 3개 중 하나를 선택해 전송 */
   const chooseAugment = useCallback(
     (augmentId: string) => {
@@ -584,5 +607,6 @@ export function useMultiplayerRoom(playerName: string) {
     chooseBottomDeal,
     resetBoard,
     noticeEvent,
+    bigAnnouncement,
   };
 }

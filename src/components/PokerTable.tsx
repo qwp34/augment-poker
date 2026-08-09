@@ -13,6 +13,7 @@ import { playSound } from '../utils/sounds';
 import type {
   AugmentRevealInfo,
   BettingActionType,
+  BigAnnouncementEvent,
   CardChangeEvent,
   ClientCard,
   ClientGameState,
@@ -23,10 +24,10 @@ import type {
 
 const AUGMENT_POOL = augmentsData as Augment[];
 const BETTING_PHASES = new Set(['preflop', 'flop', 'turn', 'river']);
-/** 서버 PokerRoom.ts의 TURN_TIMEOUT_MS와 반드시 동일한 값으로 유지 — 턴 타이머 링은
+/** 서버 PokerRoom.ts의 TURN_TIMEOUT_MS와 반드시 동일한 값으로 유지 — 턴 타이머 테두리은
  * 서버가 실제로 재는 시간이 아니라 이 값 기준으로 클라이언트가 근사 재현한 것이다. */
 const TURN_TIMEOUT_MS = 30_000;
-/** 턴 타이머 링이 위급(빨강 + 깜빡임)으로 바뀌는 잔여시간 기준 */
+/** 턴 타이머 테두리이 위급(빨강 + 깜빡임)으로 바뀌는 잔여시간 기준 */
 const TURN_URGENT_MS = 5_000;
 /** 마름모 좌석(0=하단/1=우측/2=상단/3=좌측) → "이 좌석에서 테이블 중앙 방향"의 오프셋(px).
  * 카드 딜링(중앙→좌석) 진입 방향과 베팅 칩(좌석→중앙) 이동 방향에 공용으로 쓰인다 —
@@ -110,42 +111,24 @@ const DIAMOND_CLASS = ['mp-diamond-bottom', 'mp-diamond-right', 'mp-diamond-top'
 /** 안 보이는 홀카드 자리를 위한 고정 참조 — 매 렌더 새 배열 리터럴을 만들면 아래 useMemo가 매번 무효화된다 */
 const EMPTY_HOLE: ClientCard[] = [];
 
-/** 현재 차례인 좌석 정보 박스 주위의 원형 카운트다운 게이지 — 5초 이하로 남으면 빨강 + 깜빡임 */
-function TurnTimerRing({ remainingMs, totalMs }: { remainingMs: number; totalMs: number }) {
-  const r = 30;
-  const circumference = 2 * Math.PI * r;
+/**
+ * 현재 차례인 좌석의 정보 박스(닉네임+칩) 테두리 자체를 따라 시간이 줄어드는 카운트다운.
+ * 순환형 원형 게이지(SVG circle)는 박스 위에 겹쳐 텍스트를 가려버리는 문제가 있었다 —
+ * 대신 박스 "바깥"에 얇은 테두리 링을 두르고, conic-gradient로 그 테두리만 채워서
+ * 텍스트 영역은 절대 건드리지 않는다. content-box를 마스킹으로 도려내 순수 테두리
+ * 모양만 남기는 방식이라 박스 크기(닉네임 길이 등)가 달라져도 자동으로 맞는다.
+ * conic-gradient의 0deg는 상단(12시) 방향이고 각도가 커질수록 시계방향으로 진행되므로
+ * "상단 중앙에서 시작해 시계방향으로 줄어듦" 요구사항과 정확히 맞아떨어진다.
+ */
+function TurnBorder({ remainingMs, totalMs }: { remainingMs: number; totalMs: number }) {
   const frac = Math.max(0, Math.min(1, remainingMs / totalMs));
   const urgent = remainingMs <= TURN_URGENT_MS;
   return (
-    <svg
-      className={`mp-turn-ring${urgent ? ' mp-turn-ring-urgent' : ''}`}
-      viewBox="0 0 68 68"
+    <span
+      className={`mp-turn-border${urgent ? ' mp-turn-border-urgent' : ''}`}
+      style={{ '--turn-progress': frac } as React.CSSProperties}
       aria-hidden="true"
-    >
-      <circle className="mp-turn-ring-bg" cx={34} cy={34} r={r} />
-      <circle
-        className="mp-turn-ring-fg"
-        cx={34}
-        cy={34}
-        r={r}
-        strokeDasharray={circumference}
-        strokeDashoffset={circumference * (1 - frac)}
-      />
-    </svg>
-  );
-}
-
-/** 좌석 근처에서 잠깐 나타났다 팟(중앙) 방향으로 미끄러져 사라지는 칩 — 베팅/콜 연출용 */
-function ChipFlyOut({ dir }: { dir: { x: number; y: number } }) {
-  return (
-    <motion.span
-      className="mp-chip-fly"
-      initial={{ opacity: 1, x: 0, y: 0, scale: 1 }}
-      animate={{ opacity: 0, x: dir.x * 0.55, y: dir.y * 0.55, scale: 0.7 }}
-      transition={{ duration: 0.5, ease: 'easeIn' }}
-    >
-      🪙
-    </motion.span>
+    />
   );
 }
 
@@ -171,11 +154,12 @@ interface DiamondSeatProps {
   onSwapCard: (index: 0 | 1) => void;
   /** 증강 뱃지를 클릭했을 때 — 이름/효과 설명 팝업을 띄우기 위해 상위(PokerTable)로 알린다 */
   onAugmentClick: (augmentId: string) => void;
-  /** 현재 차례인 좌석에서만 사용 — 턴 타이머 링에 표시할 잔여/총 시간(ms) */
+  /** 현재 차례인 좌석에서만 사용 — 턴 타이머 테두리에 표시할 잔여/총 시간(ms) */
   turnRemainingMs: number;
   turnTotalMs: number;
-  /** 이 좌석이 방금 베팅/콜해 칩이 팟 쪽으로 이동하는 연출을 재생해야 하면 매번 다른 값 */
-  betFlightKey?: number;
+  /** 대풍년으로 이번 라운드 홀카드가 3장인 상태 — 카드/정보 박스/증강 뱃지를 통째로 축소해
+   * 3장이어도 좌석이 테이블 바깥으로 튀어나가지 않게 한다 */
+  compact: boolean;
 }
 
 /** 상/좌/우/하 마름모 형태로 배치되는 좌석 카드 — 이름/칩/미니 홀카드/보유 증강(항상 공개) */
@@ -195,7 +179,7 @@ function DiamondSeat({
   onAugmentClick,
   turnRemainingMs,
   turnTotalMs,
-  betFlightKey,
+  compact,
 }: DiamondSeatProps) {
   const holeCards: ClientCard[] = isMe ? myHole : player.revealedHole.length > 0 ? player.revealedHole : EMPTY_HOLE;
   // 폴드한 플레이어도 카드 자리는 그대로 유지(뒷면을 흐리게 표시)한다 — 그래야 자리마다 높이가
@@ -212,6 +196,7 @@ function DiamondSeat({
         player.isFolded ? 'mp-seat-folded' : '',
         isActive ? 'mp-seat-active' : '',
         isActive && isMe ? 'mp-seat-my-turn' : '',
+        compact ? 'mp-seat-compact' : '',
       ]
         .filter(Boolean)
         .join(' ')}
@@ -222,7 +207,7 @@ function DiamondSeat({
       <div className="mp-seat-body">
         <div className="mp-seat-cards-col">
           <div className="mp-seat-info">
-            {isActive && <TurnTimerRing remainingMs={turnRemainingMs} totalMs={turnTotalMs} />}
+            {isActive && <TurnBorder remainingMs={turnRemainingMs} totalMs={turnTotalMs} />}
             {isDealer && <span className="mp-dealer-chip">D</span>}
             <span className="seat-name">
               {player.name}
@@ -232,7 +217,6 @@ function DiamondSeat({
             <span className="seat-gold">{player.stack.toLocaleString()}</span>
             {player.streetBet > 0 && <span className="seat-bet">베팅 {player.streetBet.toLocaleString()}</span>}
             {player.lastAction && <span className="mp-seat-last-action">{player.lastAction}</span>}
-            {betFlightKey !== undefined && <ChipFlyOut key={betFlightKey} dir={dealFrom} />}
           </div>
           <div className="mp-seat-cards">
             {showBacks
@@ -421,9 +405,13 @@ function ResultBanner({ result }: { result: ShowdownResult }) {
   return (
     <motion.div
       className="mp-result-banner"
-      initial={{ opacity: 0, y: -20, scale: 0.9 }}
-      animate={{ opacity: 1, y: 0, scale: 1 }}
-      exit={{ opacity: 0 }}
+      // framer-motion은 animate 대상 축(x/y/scale)을 자기가 직접 관리하는 transform으로
+      // 합성해 CSS의 transform 선언을 덮어써버린다 — 그래서 가로 중앙 정렬(-50%)도 CSS가
+      // 아니라 여기 x 값으로 명시해야 한다(그렇지 않으면 CSS의 translateX(-50%)가 무시돼
+      // 박스가 중앙에서 오른쪽으로 치우쳐 보인다).
+      initial={{ opacity: 0, x: '-50%', y: -20, scale: 0.9 }}
+      animate={{ opacity: 1, x: '-50%', y: 0, scale: 1 }}
+      exit={{ opacity: 0, x: '-50%' }}
       transition={{ type: 'spring', stiffness: 260, damping: 20 }}
     >
       {result.byFold ? (
@@ -493,6 +481,11 @@ function computeCurrentCategory(myHole: ClientCard[], community: ClientCard[]): 
  */
 function HandProgressPanel({ myHole, community }: { myHole: ClientCard[]; community: ClientCard[] }) {
   const current = computeCurrentCategory(myHole, community);
+  // 현재 달성한 족보를 목록 맨 위로 끌어올려, 스크롤 없이도 항상 바로 보이게 한다 —
+  // 나머지 항목은 원래(하이카드→로열플러시) 순서 그대로 그 아래에 이어진다.
+  const orderedCategories = current
+    ? [current, ...HAND_CATEGORY_ORDER.filter((cat) => cat !== current)]
+    : HAND_CATEGORY_ORDER;
 
   return (
     <div className="mp-hand-progress">
@@ -500,7 +493,7 @@ function HandProgressPanel({ myHole, community }: { myHole: ClientCard[]; commun
         {current ? `현재 최고 족보 — ${CATEGORY_NAMES_KO[current]}` : '홀카드를 받으면 표시됩니다'}
       </p>
       <ul className="mp-hand-progress-list">
-        {HAND_CATEGORY_ORDER.map((cat) => (
+        {orderedCategories.map((cat) => (
           <li
             key={cat}
             className={`mp-hand-progress-item${cat === current ? ' mp-hand-progress-active' : ''}`}
@@ -550,6 +543,8 @@ interface PokerTableProps {
   cardChangeEvent: CardChangeEvent | null;
   /** 서버의 짧은 시스템 알림(밑장빼기 사용/보드 리셋 등) — 토스트로 표시 */
   noticeEvent: NoticeEvent | null;
+  /** 대풍년처럼 화면 전체에 크게 알려야 하는 이벤트 — 큰 배너로 2~3초 표시 */
+  bigAnnouncement: BigAnnouncementEvent | null;
   onAction: (type: BettingActionType, amount?: number) => void;
   /** 카드 재구성 — 내 홀카드 index(0|1)를 새 카드로 교체 요청 */
   onSwapCard: (index: 0 | 1) => void;
@@ -575,6 +570,7 @@ export function PokerTable({
   augmentReveal,
   cardChangeEvent,
   noticeEvent,
+  bigAnnouncement,
   onAction,
   onSwapCard,
   onResetBoard,
@@ -585,6 +581,9 @@ export function PokerTable({
   const potTotal = gameState.pot + gameState.players.reduce((sum, p) => sum + p.streetBet, 0);
   // 서버의 seatIndex/턴 순서는 건드리지 않고, 내 자리를 항상 하단으로 보이게 하는 표시 슬롯만 계산
   const mySeatIndex = myPlayer?.seatIndex ?? 0;
+  // 대풍년 — 누구 한 명이라도 홀카드가 3장이면(모두에게 동일 적용) 좌석 전체를 축소해
+  // 3장이 되어도 좌석이 테이블 바깥으로 튀어나가지 않게 한다
+  const compactHands = gameState.players.some((p) => p.holeCount > 2);
   const canAct = isMyTurn && myPlayer && !myPlayer.isFolded && !myPlayer.allIn;
   const canSwap =
     BETTING_PHASES.has(gameState.phase) &&
@@ -657,37 +656,18 @@ export function PokerTable({
     wasMyTurnRef.current = isMyTurn;
   }, [isMyTurn]);
 
-  // chipBet — 누군가의 이번 스트리트 베팅액이 늘어날 때마다(블라인드 포함) 칩 소리 +
-  // 그 좌석에서 팟 방향으로 미끄러지는 칩 연출을 1회 재생한다.
+  // chipBet — 누군가의 이번 스트리트 베팅액이 늘어날 때마다(블라인드 포함) 칩 소리를
+  // 재생한다. 베팅 시 좌석→팟으로 미끄러지는 칩 이동 애니메이션은 제거했다(요청) —
+  // 팟→승자 방향 애니메이션(payoutFlights)은 그대로 유지.
   const prevStreetBetsRef = useRef(new Map<string, number>());
-  const betFlightNonceRef = useRef(new Map<string, number>());
-  const [betFlightKeys, setBetFlightKeys] = useState(new Map<string, number>());
   useEffect(() => {
-    const bumped: string[] = [];
+    let bumped = false;
     for (const p of gameState.players) {
       const prev = prevStreetBetsRef.current.get(p.sessionId) ?? 0;
-      if (p.streetBet > prev) bumped.push(p.sessionId);
+      if (p.streetBet > prev) bumped = true;
       prevStreetBetsRef.current.set(p.sessionId, p.streetBet);
     }
-    if (bumped.length === 0) return;
-    playSound('chipBet');
-    setBetFlightKeys((prev) => {
-      const next = new Map(prev);
-      for (const sessionId of bumped) {
-        const n = (betFlightNonceRef.current.get(sessionId) ?? 0) + 1;
-        betFlightNonceRef.current.set(sessionId, n);
-        next.set(sessionId, n);
-      }
-      return next;
-    });
-    const t = setTimeout(() => {
-      setBetFlightKeys((prev) => {
-        const next = new Map(prev);
-        for (const sessionId of bumped) next.delete(sessionId);
-        return next;
-      });
-    }, 550);
-    return () => clearTimeout(t);
+    if (bumped) playSound('chipBet');
   }, [gameState.players]);
 
   // win — 이번 라운드 결과가 도착했고 내가 승자 목록에 있으면 승리 팡파레 + 팟에서
@@ -772,6 +752,16 @@ export function PokerTable({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [noticeEvent]);
 
+  // 대풍년처럼 화면 전체에 크게 알려야 하는 이벤트 — 작은 토스트로는 눈에 안 띄어서
+  // 별도의 큰 배너로 2.5초간 표시한다 (딜링 연출을 가리지 않도록 테이블 상단에 배치)
+  const [visibleBigAnnouncement, setVisibleBigAnnouncement] = useState<BigAnnouncementEvent | null>(null);
+  useEffect(() => {
+    if (!bigAnnouncement) return;
+    setVisibleBigAnnouncement(bigAnnouncement);
+    const t = setTimeout(() => setVisibleBigAnnouncement(null), 2500);
+    return () => clearTimeout(t);
+  }, [bigAnnouncement]);
+
   // 고정 크기로 디자인된 테이블 전체를 뷰포트에 맞춰 통째로 스케일한다 — 요소 각각을
   // 반응형으로 다시 배치하는 대신 하나의 캔버스로 취급해, 화면 크기와 무관하게 상/좌/우/하
   // 좌석·보드·베팅 바의 상대적 크기 비율이 항상 그대로 유지되고 스크롤 없이 한 화면에 들어온다.
@@ -785,6 +775,23 @@ export function PokerTable({
       <div className="mp-round-badge">
         라운드 {gameState.round}/{gameState.maxRounds}
       </div>
+
+      {/* 대풍년처럼 화면 전체에 크게 알려야 하는 이벤트 — 좌석/카드를 가리지 않는 테이블
+          상단에 큼직하게 띄운다 (딜링 연출은 그 아래에서 그대로 보임) */}
+      <AnimatePresence>
+        {visibleBigAnnouncement && (
+          <motion.div
+            key={visibleBigAnnouncement.id}
+            className="mp-big-announcement"
+            initial={{ opacity: 0, y: -16, scale: 0.9 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, scale: 0.95 }}
+            transition={{ type: 'spring', stiffness: 260, damping: 20 }}
+          >
+            {visibleBigAnnouncement.text}
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* 카드 변경 알림 토스트 — "OO님의 카드가 XX 효과로 바뀌었습니다" */}
       <div className="mp-cardchange-toast-stack">
@@ -809,8 +816,11 @@ export function PokerTable({
           <div className="mp-table-area">
             <div className="mp-center-board">
               <div className="pot-capsule">
-                <span className="pot-label">POT</span>
                 <span className="pot-value">{potDisplay.toLocaleString()} 골드</span>
+                {/* 승리 연출은 POT 표시 위치에 그대로 겹쳐 뜬다 — 특정 좌석(닉네임/칩/핸드)을
+                    가리지 않는 유일하게 안전한 중앙 자리라서, POT 캡슐 정중앙에 자체 배경으로
+                    덮어씌워 보여준다(POT 숫자 자체는 DOM에 남아있지만 시각적으로 가려진다) */}
+                <AnimatePresence>{lastResult && <ResultBanner key="result" result={lastResult} />}</AnimatePresence>
                 <AnimatePresence>
                   {payoutFlights.map((f) => (
                     <motion.span
@@ -868,11 +878,9 @@ export function PokerTable({
                 onAugmentClick={setAugmentPopupId}
                 turnRemainingMs={turnRemainingMs}
                 turnTotalMs={TURN_TIMEOUT_MS}
-                betFlightKey={betFlightKeys.get(p.sessionId)}
+                compact={compactHands}
               />
             ))}
-
-            <AnimatePresence>{lastResult && <ResultBanner key="result" result={lastResult} />}</AnimatePresence>
 
             {/* 테이블(.mp-table-area) 우측 하단 모서리에 고정 — 특정 좌석에 종속되지 않으므로
                 내 시점에 따라 어느 플레이어가 우측/하단에 오든 항상 같은 자리에 위치한다 */}

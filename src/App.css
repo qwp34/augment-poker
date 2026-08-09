@@ -867,19 +867,13 @@
   }
 }
 
-/* ── 현재/쇼다운 최고 족보를 구성하는 카드 — 은은하게 계속 강조 ── */
+/* ── 현재/쇼다운 최고 족보를 구성하는 카드 — 은은하게 강조하되 고정(정적) 표시.
+ * 예전엔 box-shadow를 계속 넓혔다 좁혔다 하는 무한 반복 애니메이션이라 카드가 항상
+ * "부들부들" 떨리는 것처럼 보였다 — 평상시에도 계속 움직이면 산만하므로, 애니메이션 없이
+ * 고정된 골드 테두리/은은한 글로우만 남긴다(강조 자체는 유지). */
 .pcard-highlight-hand .pcard-front {
   border: 2px solid var(--gold);
-  animation: hand-highlight-pulse 1.6s ease-in-out infinite alternate;
-}
-
-@keyframes hand-highlight-pulse {
-  from {
-    box-shadow: 0 0 8px rgba(245, 197, 66, 0.5), 0 4px 10px rgba(0, 0, 0, 0.55);
-  }
-  to {
-    box-shadow: 0 0 20px rgba(245, 197, 66, 0.95), 0 4px 10px rgba(0, 0, 0, 0.55);
-  }
+  box-shadow: 0 0 12px rgba(245, 197, 66, 0.7), 0 4px 10px rgba(0, 0, 0, 0.55);
 }
 
 .pcard-face {
@@ -1794,6 +1788,67 @@
   transform: translateY(-50%);
 }
 
+/* 대풍년(홀카드 3장) — 카드/정보 박스/증강 뱃지 크기 자체를 직접 줄인다(약 80~85%).
+ * 처음엔 좌석 전체에 transform:scale()만 적용해봤지만, 카드+증강 뱃지 한 줄의 실제
+ * 너비가 좌석 고정 폭(380px)보다 넓어 align-items:center로 인해 양옆으로 흘러넘치는
+ * 상태였다 — scale()은 그 흘러넘친 절대 픽셀량을 비율대로 줄일 뿐 근본적으로 없애지
+ * 못해(좌우 여유가 14px뿐인 좌/우 좌석에서는 그래도 테이블 밖으로 삐져나옴). 대신
+ * 카드/증강 칸을 직접 줄이고, 좌석 자체의 폭도 그 줄어든 한 줄 너비에 맞춰 넓혀
+ * align-items:center로 인한 흘러넘침 자체가 생기지 않게 한다. 다음 라운드에 2장으로
+ * 돌아오면 이 클래스가 빠지며 원래 크기로 복원된다. */
+.mp-diamond-seat.mp-seat-compact {
+  width: 430px;
+}
+
+/* .mp-table-screen 접두사로 명시도(specificity)를 .mp-table-screen .pcard-sm(118px)/
+ * .mp-diamond-seat .seat-name 등 이 파일 뒤쪽에 나오는 동일 명시도 규칙보다 한 단계
+ * 높여서, 선언 순서와 무관하게 이 축소 규칙이 항상 이긴다(안 그러면 CSS 소스 순서상
+ * 뒤에 나오는 규칙에 조용히 덮어써져 카드 크기가 전혀 줄지 않는 문제가 있었다). */
+.mp-table-screen .mp-seat-compact .pcard-sm {
+  width: 96px;
+  height: 135px;
+}
+
+.mp-seat-compact .mp-seat-info {
+  padding: 9px 15px;
+  border-radius: 10px;
+}
+
+.mp-table-screen .mp-seat-compact .seat-name {
+  font-size: 18px;
+}
+
+.mp-table-screen .mp-seat-compact .seat-gold {
+  font-size: 19px;
+  padding: 3px 11px;
+}
+
+.mp-table-screen .mp-seat-compact .seat-bet {
+  font-size: 13px;
+}
+
+.mp-seat-compact .mp-seat-last-action {
+  font-size: 13px;
+}
+
+.mp-seat-compact .mp-dealer-chip {
+  width: 24px;
+  height: 24px;
+  font-size: 0.82rem;
+  top: -10px;
+  right: -6px;
+}
+
+.mp-seat-compact .mp-seat-augments {
+  width: 110px;
+  max-height: 115px;
+}
+
+.mp-seat-compact .mp-seat-augments .augment-chip {
+  padding: 5px 9px;
+  font-size: 11px;
+}
+
 .mp-diamond-seat .mp-seat-cards {
   display: flex;
   gap: 6px;
@@ -1953,6 +2008,30 @@
   white-space: nowrap;
 }
 
+/* ── 대풍년처럼 "갑자기 규칙이 바뀐다"는 걸 놓치면 안 되는 큰 알림 — 카드 변경 토스트보다
+   한층 더 크고 화면 상단 중앙에서 눈에 확 띄게 표시된다. 좌석/보드는 가리지 않는 위치라
+   그 아래에서 실제 딜링 애니메이션이 그대로 보인다. */
+.mp-big-announcement {
+  position: absolute;
+  top: 9%;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 25;
+  background: rgba(8, 20, 24, 0.96);
+  backdrop-filter: blur(4px);
+  border: 3px solid var(--gold);
+  color: var(--gold);
+  font-size: 1.7rem;
+  font-weight: 900;
+  padding: 18px 38px;
+  border-radius: 20px;
+  box-shadow: 0 0 40px rgba(245, 197, 66, 0.65), 0 12px 30px rgba(0, 0, 0, 0.6);
+  text-shadow: 0 0 16px rgba(245, 197, 66, 0.6);
+  text-align: center;
+  max-width: 90%;
+  pointer-events: none;
+}
+
 .mp-bottom-action {
   display: flex;
   align-items: center;
@@ -2028,36 +2107,42 @@
   box-shadow: none;
 }
 
-/* ── 턴 타이머 카운트다운 링 — 현재 차례인 좌석의 정보 박스(.mp-seat-info)를 감싼다 ── */
-.mp-turn-ring {
+/* ── 턴 타이머 카운트다운 테두리 — 현재 차례인 좌석의 정보 박스(.mp-seat-info) "바깥"
+   가장자리를 얇게 두르는 테두리 자체가 시간에 따라 시계방향으로 사라진다. 박스 위에
+   겹쳐서 텍스트를 가리는 원형 게이지 대신, content-box를 마스킹으로 도려내 순수
+   테두리 두께(3px)만 남기므로 닉네임/칩 텍스트를 절대 가리지 않는다.
+   conic-gradient(from 0deg, ...)는 12시(상단) 방향에서 시작해 각도가 커질수록
+   시계방향으로 진행되므로 "상단 중앙 시작 + 시계방향 감소" 요구사항과 그대로 맞는다. */
+.mp-turn-border {
+  --turn-progress: 1;
+  --turn-color: var(--teal);
   position: absolute;
-  inset: -10px;
-  width: calc(100% + 20px);
-  height: calc(100% + 20px);
-  transform: rotate(-90deg);
+  inset: -5px;
+  border-radius: 16px;
+  padding: 3px;
+  background: conic-gradient(
+    from 0deg,
+    var(--turn-color) calc(var(--turn-progress) * 360deg),
+    transparent calc(var(--turn-progress) * 360deg)
+  );
+  -webkit-mask:
+    linear-gradient(#fff 0 0) content-box,
+    linear-gradient(#fff 0 0);
+  -webkit-mask-composite: xor;
+  mask:
+    linear-gradient(#fff 0 0) content-box,
+    linear-gradient(#fff 0 0);
+  mask-composite: exclude;
   pointer-events: none;
   z-index: 1;
 }
 
-.mp-turn-ring-bg {
-  fill: none;
-  stroke: rgba(255, 255, 255, 0.12);
-  stroke-width: 3;
+.mp-turn-border-urgent {
+  --turn-color: #ff5252;
+  animation: turn-border-blink 0.5s ease-in-out infinite alternate;
 }
 
-.mp-turn-ring-fg {
-  fill: none;
-  stroke: var(--teal);
-  stroke-width: 3;
-  stroke-linecap: round;
-}
-
-.mp-turn-ring-urgent .mp-turn-ring-fg {
-  stroke: #ff5252;
-  animation: turn-ring-blink 0.5s ease-in-out infinite alternate;
-}
-
-@keyframes turn-ring-blink {
+@keyframes turn-border-blink {
   from {
     opacity: 1;
   }
@@ -2084,8 +2169,10 @@
 /* ── 사운드 on/off 토글 — 화면 구석에 작게 고정, 상태는 세션(탭) 안에서만 유지 ── */
 .mp-sound-toggle {
   position: fixed;
-  top: 14px;
-  right: 14px;
+  top: 20px;
+  /* 닫기(✕) 버튼(.mp-close, top:20px/right:24px/36×36)과 같은 줄에 겹치지 않도록
+     그 왼쪽에 나란히 배치 — 36px 버튼 폭 + 8px 여백만큼 오른쪽 여백을 더 준다 */
+  right: 68px;
   z-index: 50;
   width: 36px;
   height: 36px;
@@ -2495,22 +2582,34 @@
   box-shadow: 0 0 8px rgba(176, 110, 245, 0.7);
 }
 
-/* ── 쇼다운 결과 배너 ── */
+/* ── 쇼다운 결과 배너 — 특정 좌석을 가리지 않도록 POT 캡슐(.pot-capsule, position:relative)
+   정중앙에 겹쳐서 뜬다. 어떤 플레이어의 핸드/닉네임/보유 금액과도 절대 겹치지 않는 유일한
+   "중립" 위치라서 여기로 옮겼다 — POT 숫자 위에 자체 불투명 배경으로 덮어씌워진다. */
+/* POT 캡슐 정중앙에 겹쳐서 뜨면(top:50%/translate(-50%,-50%)) 내용이 조금만 길어져도
+ * 박스 절반이 POT 아래의 보드 카드 줄을 침범해 카드를 가렸다 — 대신 POT 캡슐의 "위쪽"에
+ * 바닥을 붙이고 위로만 자라도록(bottom:100%) 바꿔서, 박스가 아무리 커져도 보드 카드
+ * 방향(아래쪽)으로는 절대 내려오지 않는다. max-height+overflow-y로 이중 안전장치까지 둔다. */
 .mp-result-banner {
   position: absolute;
-  top: 6%;
+  bottom: 100%;
+  margin-bottom: 14px;
   left: 50%;
-  transform: translateX(-50%);
+  /* 가로 중앙 정렬(-50%)은 framer-motion의 animate x 값으로 준다(ResultBanner 컴포넌트
+     참고) — motion이 transform을 통째로 관리하므로 여기 transform 선언은 무시된다. */
   z-index: 10;
   display: flex;
   flex-direction: column;
+  align-items: center;
   gap: 8px;
-  background: rgba(8, 20, 24, 0.94);
+  background: rgba(8, 20, 24, 0.97);
   border: 2px solid var(--gold);
   border-radius: 14px;
   padding: 16px 26px;
   box-shadow: 0 0 30px rgba(245, 197, 66, 0.4), 0 10px 30px rgba(0, 0, 0, 0.6);
-  max-width: 92%;
+  width: max-content;
+  max-width: min(480px, 80vw);
+  max-height: 280px;
+  overflow-y: auto;
 }
 
 .mp-result-line {

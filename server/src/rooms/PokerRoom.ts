@@ -394,6 +394,15 @@ export class PokerRoom extends Room<PokerState> {
     const anyRotate = active.some((p) => findByEffect(this.ownedAugments(p), 'rotate_hole_cards'));
     const holeCount = anyExtraHole ? 3 : 2;
 
+    // 대풍년 — 갑자기 홀카드가 3장으로 늘어나면 혼란스러우므로, 딜링 직전 전원에게
+    // 눈에 띄는 큰 배너로 무슨 일이 일어나는지 먼저 알린다(작은 토스트로는 부족해
+    // 별도 메시지 타입을 쓴다 — 클라이언트가 더 크고 오래 표시).
+    if (anyExtraHole) {
+      this.broadcast('bigAnnouncement', {
+        text: '🌾 대풍년 발동! 모든 플레이어의 홀카드가 1장씩 추가됩니다',
+      });
+    }
+
     // 1) 기본 딜링 — active 배열은 seatIndex 오름차순(=시계 방향) 순서다
     const dealtHoles = new Map<string, Card[]>();
     for (const p of active) {
