@@ -14,7 +14,7 @@
     "rarity": "gold",
     "trigger": "on_hand_start",
     "effect": { "type": "card_swap", "value": 1 },
-    "description": "매 핸드 1회, 내 홀카드 1장을 새 카드로 교체할 수 있다"
+    "description": "매 라운드, 내 핸드 1장을 새 카드로 교체할 수 있다"
   },
   {
     "id": "aug_allin_snipe",
@@ -47,7 +47,7 @@
     "rarity": "gold",
     "trigger": "on_hand_start",
     "effect": { "type": "reveal_opponent_card", "value": 1 },
-    "description": "매 핸드 시작 시 — 상대 1명을 지목해 그의 핸드 1장을 볼 수 있다"
+    "description": "매 라운드 시작 시 — 상대 1명을 지목해 그의 핸드 1장을 볼 수 있다"
   },
   {
     "id": "aug_chameleon",
