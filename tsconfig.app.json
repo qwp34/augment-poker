@@ -23,5 +23,7 @@
     "erasableSyntaxOnly": true,
     "noFallthroughCasesInSwitch": true
   },
-  "include": ["src"]
+  "include": ["src"],
+  /* 엔진 테스트는 node:test로 따로 돌린다 (앱 빌드 대상 아님) */
+  "exclude": ["src/**/*.test.ts"]
 }

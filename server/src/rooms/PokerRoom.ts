@@ -1556,6 +1556,19 @@ export class PokerRoom extends Room<PokerState> {
     return this.seatOrder().filter((p) => !p.isFolded && p.connected);
   }
 
+  /**
+   * 봇 에퀴티 계산에 넘길 상대 수 — 자기 자신을 제외하고 아직 폴드하지 않은 플레이어.
+   * 올인한 플레이어도 쇼다운까지 남아 팟을 다투므로 상대로 센다.
+   * 에퀴티 계산은 상대 1명 이상을 요구하므로 최소 1로 clamp한다.
+   */
+  private liveOpponentCount(bot: PlayerState): number {
+    let opponents = 0;
+    for (const p of this.state.players.values()) {
+      if (p.sessionId !== bot.sessionId && !p.isFolded) opponents++;
+    }
+    return Math.max(1, opponents);
+  }
+
   /** 딜러 버튼을 다음 착석·플레이 가능(파산하지 않은) 플레이어 좌석으로 시계 방향 이동 */
   private advanceDealer() {
     const slots = this.seatSlots();
@@ -1696,6 +1709,7 @@ export class PokerRoom extends Room<PokerState> {
         botStack: bot.stack,
         raisesThisStreet: this.raisesThisStreet,
         persona: this.botPersonas.get(sessionId) ?? 'cautious',
+        opponents: this.liveOpponentCount(bot),
       });
     } catch (err) {
       // 향후 Claude API 연동 시 호출 실패에 대비한 안전한 폴백

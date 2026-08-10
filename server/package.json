@@ -11,6 +11,7 @@
     "build": "tsc -p .",
     "smoke": "tsx scripts/smoke.ts",
     "smoke:showdown": "tsx scripts/showdown_runout_test.ts",
+    "selfplay": "tsx scripts/selfplay.ts",
     "test": "tsx --test src/engine/*.test.ts"
   },
   "dependencies": {

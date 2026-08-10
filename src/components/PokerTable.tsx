@@ -2,6 +2,7 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState, type Ref } from 
 import { motion, AnimatePresence } from 'framer-motion';
 import { Card } from './Card';
 import { AugmentCard } from './AugmentCard';
+import { EquityBadge } from './EquityBadge';
 import augmentsData from '../data/augments.json';
 import { RARITY_NAMES_KO, type Augment } from '../engine/augmentEngine';
 import { evaluateBest, CATEGORY_NAMES_KO, HAND_CATEGORY_ORDER, type HandCategory } from '../engine/handEvaluator';
@@ -9,6 +10,7 @@ import type { Card as EngineCard } from '../engine/types';
 import { CATEGORY_SHORT_KO } from '../ui/format';
 import { useFitScale } from '../ui/useFitScale';
 import { useCountUp } from '../ui/useCountUp';
+import { countLiveOpponents, useLiveEquity } from '../ui/useLiveEquity';
 import { playSound } from '../utils/sounds';
 import type {
   AugmentRevealInfo,
@@ -615,7 +617,15 @@ function computeCurrentCategory(myHole: ClientCard[], community: ClientCard[]): 
  * handEvaluator.ts를 재사용해 클라이언트에서 계산한다. 상대 카드는 애초에 클라이언트에
  * 오지 않으므로(서버가 쇼다운 전까지 보내지 않음) 이 계산엔 절대 섞일 수 없다.
  */
-function HandProgressPanel({ myHole, community }: { myHole: ClientCard[]; community: ClientCard[] }) {
+function HandProgressPanel({
+  myHole,
+  community,
+  liveEquity,
+}: {
+  myHole: ClientCard[];
+  community: ClientCard[];
+  liveEquity: number | null;
+}) {
   const current = computeCurrentCategory(myHole, community);
   // 현재 달성한 족보를 목록 맨 위로 끌어올려, 스크롤 없이도 항상 바로 보이게 한다 —
   // 나머지 항목은 원래(하이카드→로열플러시) 순서 그대로 그 아래에 이어진다.
@@ -627,6 +637,7 @@ function HandProgressPanel({ myHole, community }: { myHole: ClientCard[]; commun
     <div className="mp-hand-progress">
       <p className="mp-hand-progress-hint">
         {current ? `현재 최고 족보 — ${CATEGORY_NAMES_KO[current]}` : '홀카드를 받으면 표시됩니다'}
+        <EquityBadge equity={liveEquity} />
       </p>
       <ul className="mp-hand-progress-list">
         {orderedCategories.map((cat) => (
@@ -654,7 +665,15 @@ function isBigHandCategory(current: HandCategory | null): boolean {
  * 블러 없이 opacity만 낮춰 평소엔 은은하게 두다가, 내 현재 최고 족보가 스트레이트 이상으로
  * 올라가는 순간 완전히 또렷해진다(.mp-info-panel-focused, App.css 참고).
  */
-function InfoPanel({ myHole, community }: { myHole: ClientCard[]; community: ClientCard[] }) {
+function InfoPanel({
+  myHole,
+  community,
+  liveEquity,
+}: {
+  myHole: ClientCard[];
+  community: ClientCard[];
+  liveEquity: number | null;
+}) {
   const current = computeCurrentCategory(myHole, community);
   const isBigHand = isBigHandCategory(current);
 
@@ -662,7 +681,7 @@ function InfoPanel({ myHole, community }: { myHole: ClientCard[]; community: Cli
     <div className={`mp-info-panel${isBigHand ? ' mp-info-panel-focused' : ''}`}>
       <div className="mp-info-header">족보</div>
       <div className="mp-info-content">
-        <HandProgressPanel myHole={myHole} community={community} />
+        <HandProgressPanel myHole={myHole} community={community} liveEquity={liveEquity} />
       </div>
     </div>
   );
@@ -773,6 +792,18 @@ export function PokerTable({
 
   // 내 관점에서 실시간(또는 쇼다운) 최고 족보를 구성하는 카드 — 홀카드/보드에 골드 하이라이트
   const myBestFiveIds = useMemo(() => computeBestFiveIds(myHole, communityForEval), [myHole, communityForEval]);
+
+  // 실시간 승률 — 베팅 중에, 홀카드를 받았고, 내가 아직 죽지 않았을 때만 표시한다
+  // (쇼다운/라운드 종료는 BETTING_PHASES에서 이미 걸러진다. 관전자는 myPlayer가 없다).
+  // 상대 홀카드는 절대 쓰지 않는다 — 공개 상태에서 "몇 명 남았는지"만 센다.
+  const equityVisible =
+    BETTING_PHASES.has(gameState.phase) && myHole.length >= 2 && !!myPlayer && !myPlayer.isFolded;
+  const liveEquity = useLiveEquity(
+    myHole,
+    communityForEval,
+    countLiveOpponents(gameState.players, mySessionId),
+    equityVisible,
+  );
 
   // ── 쇼다운 순차 공개 + 러시안 룰렛 연출 ─────────────────────────────────────
   // 서버는 쇼다운 시점에 전원의 홀카드/최종 보드를 한 번에 다 채워서 보내지만(gameState는
@@ -1306,7 +1337,7 @@ export function PokerTable({
 
             {/* 테이블(.mp-table-area) 우측 하단 모서리에 고정 — 특정 좌석에 종속되지 않으므로
                 내 시점에 따라 어느 플레이어가 우측/하단에 오든 항상 같은 자리에 위치한다 */}
-            <InfoPanel myHole={myHole} community={communityForEval} />
+            <InfoPanel myHole={myHole} community={communityForEval} liveEquity={liveEquity} />
 
             {/* 쇼다운 "SHOW DOWN" 텍스트 + 러시안 룰렛 원래 족보/카운트다운/발동 텍스트 —
                 테이블 전체를 덮는 중앙 오버레이. pointer-events:none이라 아래 좌석/버튼 클릭을 막지 않는다. */}

@@ -15,10 +15,12 @@ import { MenuStage } from './components/MenuStage';
 import { ChipButton } from './components/ChipButton';
 import { AuthModal } from './components/AuthModal';
 import { SettingsPanel } from './components/SettingsPanel';
+import { EquityBadge } from './components/EquityBadge';
 import { findByEffect } from './engine/augmentEngine';
 import { evaluateBest } from './engine/handEvaluator';
 import { handLabel } from './ui/format';
 import { useCountUp } from './ui/useCountUp';
+import { useLiveEquity } from './ui/useLiveEquity';
 import { sfx } from './ui/sfx';
 import { getRoomIdFromPath } from './net/colyseusClient';
 import './App.css';
@@ -100,6 +102,10 @@ export default function App() {
 
   const playerWon = outcome?.winner === 'player';
   const showResult = phase === 'roundResult';
+
+  // 실시간 승률 — 싱글플레이는 항상 봇 1명과의 헤즈업이다.
+  // 베팅 중(= 프리플랍 이후, 쇼다운 이전)에 홀카드를 받은 상태에서만 계산한다.
+  const liveEquity = useLiveEquity(playerHole, community, 1, phase === 'betting' && playerHole.length >= 2);
 
   // 족보를 구성하는 카드 5장 하이라이트 — 진행 중엔 실시간 최고 족보, 결과 화면에선 실제 판정 결과를 사용
   const playerBestFiveIds = useMemo(() => {
@@ -364,7 +370,10 @@ export default function App() {
                 {playerWon && ` +${outcome.payout.toLocaleString()} 골드`}
               </div>
             ) : (
-              liveHand && <div className="hand-capsule hand-capsule-live">{handLabel(liveHand)}</div>
+              <div className="hand-capsule-row">
+                {liveHand && <div className="hand-capsule hand-capsule-live">{handLabel(liveHand)}</div>}
+                <EquityBadge equity={liveEquity} />
+              </div>
             )}
             {canSwap && <div className="swap-hint">🔄 카드를 클릭해 1장 교체 가능</div>}
             {streetBets.player > 0 && (

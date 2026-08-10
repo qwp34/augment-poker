@@ -936,6 +936,36 @@
   border-style: dashed;
 }
 
+/* 족보 캡슐 + 승률 캡슐을 한 줄에 나란히 */
+.hand-capsule-row {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+/* 실시간 승률 — 족보 캡슐 옆에 붙는 작은 캡슐 (싱글/멀티 공용) */
+.equity-capsule {
+  display: inline-block;
+  padding: 3px 10px;
+  border: 1px solid #4d7c5a;
+  border-radius: 4px;
+  background: linear-gradient(to bottom, #16301f, #0d1e14);
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: #9fdcb4;
+  letter-spacing: 0.4px;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+/* 멀티 정보 패널 안에서는 힌트 문구 옆에 자연스럽게 붙도록 여백만 준다 */
+.mp-hand-progress-hint .equity-capsule {
+  margin-left: 6px;
+  vertical-align: middle;
+}
+
 /* ── 중앙 보드 ── */
 .board {
   display: flex;
