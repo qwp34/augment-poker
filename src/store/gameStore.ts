@@ -288,6 +288,7 @@ export const useGameStore = create<GameState>((set, get) => {
       botStack: s.botStack,
       raisesThisStreet: s.raisesThisStreet,
       persona: s.botPersona,
+      opponents: 1, // 싱글플레이는 항상 봇 vs 플레이어 헤즈업
     });
 
     const logBot = (msg: string) =>

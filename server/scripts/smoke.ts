@@ -7,6 +7,10 @@
  *  2. 홀카드는 개별 메시지로만 수신 (동기화 상태에 비공개)
  *  3. 잘못된 레이즈 금액(-500) → 서버가 거부
  *  4. 베팅 진행 → 쇼다운 result 수신 → 라운드 2 진입
+ *
+ * 서버가 응답을 기다리는 프롬프트(augmentTargetRequest / bottomDealPrompt)는 전부
+ * 즉시 답해줘야 한다 — 응답하지 않으면 서버의 자동 해소 타임아웃(45초)이
+ * 이 스크립트의 데드라인(40초)보다 길어 그대로 타임아웃된다.
  */
 
 import { Client, Room } from 'colyseus.js';
@@ -20,6 +24,7 @@ let resultReceived = false;
 let rejectionReceived = false;
 let invalidRaiseSent = false;
 let instantAugmentFlowSeen = false;
+let bottomDealPromptSeen = false;
 
 function autoPlay(room: Room, label: string) {
   const done = new Set<string>();
@@ -56,6 +61,24 @@ function autoPlay(room: Room, label: string) {
     },
   );
   room.onMessage('augmentReveal', (r: unknown) => log(`[${label}] 카드 공개 수신:`, JSON.stringify(r)));
+
+  // 밑장빼기(street_reveal_choice)는 응답이 올 때까지 진행이 멈춘다. 서버가 45초 뒤
+  // 자동으로 "사용 안 함" 처리하긴 하지만, 그 45초가 이 스크립트의 데드라인(40초)보다
+  // 길어서 응답하지 않으면 스모크가 그대로 타임아웃된다 — 즉시 스킵으로 답한다.
+  // (showdown_runout_test.ts의 attachAutoFlow와 같은 방식)
+  room.onMessage('bottomDealPrompt', () => {
+    bottomDealPromptSeen = true;
+    log(`[${label}] 밑장빼기 프롬프트 수신 → 사용 안 함으로 응답`);
+    room.send('bottomDealChoice', { use: false });
+  });
+
+  // 아래는 응답이 필요 없는 단방향 알림. 등록해두지 않으면 colyseus.js가
+  // "onMessage() not registered for type ..." 경고를 뿌려 로그가 지저분해진다.
+  room.onMessage('notice', (n: { text: string }) => log(`[${label}] 알림: ${n.text}`));
+  room.onMessage('cardChange', () => {});
+  room.onMessage('bigAnnouncement', (a: unknown) => log(`[${label}] 큰 알림:`, JSON.stringify(a)));
+  room.onMessage('turnExtended', () => {});
+  room.onMessage('chipsSettled', (c: unknown) => log(`[${label}] 칩 정산:`, JSON.stringify(c)));
 
   room.onStateChange(() => {
     const st = room.state.toJSON() as any;
@@ -131,9 +154,24 @@ async function main() {
     (p) => p.revealedHole?.length > 0,
   );
 
+  // 실패 시 원인을 바로 알 수 있도록 최종 상태를 남긴다 (판정에는 쓰지 않음)
+  log(
+    `최종 상태: round=${st.round} phase=${st.phase} | ` +
+      Object.values(st.players as Record<string, any>)
+        .map((p) => `${p.name} stack=${p.stack}${p.isFolded ? ' (folded)' : ''}`)
+        .join(', '),
+  );
+
+  // 라운드 1에는 2명 모두 홀카드를 받는다. 라운드 2치까지 받으려면 둘 다 살아남아야 하는데,
+  // 올인 런아웃으로 파산하면 stack 0 → 자동 관전이라 홀카드가 오지 않는 게 정상 동작이다.
+  // 그래서 생존 인원에 맞춰 기대치를 잡는다 (예전엔 4회 고정이라 파산 시 오탐이 났다).
+  const humanIds = [roomA.sessionId, roomB.sessionId];
+  const survivors = humanIds.filter((id) => ((st.players as Record<string, any>)[id]?.stack ?? 0) > 0);
+  const expectedHoles = survivors.length === 2 ? 4 : 2;
+
   log('─'.repeat(50));
   const checks: [string, boolean][] = [
-    ['홀카드 개별 전송 (4회 이상 수신)', holeCount >= 4],
+    [`홀카드 개별 전송 (${expectedHoles}회 이상 수신, 생존 ${survivors.length}명 기준)`, holeCount >= expectedHoles],
     ['쇼다운/결과 브로드캐스트 수신', resultReceived],
     ['조작된 레이즈 값 서버 거부', rejectionReceived],
     ['베팅 중 홀카드 상태 비공개', !leaked],
@@ -146,6 +184,7 @@ async function main() {
   }
   // 즉시형 증강은 8개 중 무작위 3개 제시라 매 실행마다 뽑힌다는 보장이 없다 — 참고용 로그만 남긴다
   log(`${instantAugmentFlowSeen ? 'ℹ️' : '·'} 즉시형 증강(음침한 눈/카멜레온/당근이세요?) 대상 지정 흐름 ${instantAugmentFlowSeen ? '실제로 검증됨' : '이번 실행에선 미등장'}`);
+  log(`${bottomDealPromptSeen ? 'ℹ️' : '·'} 밑장빼기 프롬프트 응답 흐름 ${bottomDealPromptSeen ? '실제로 검증됨' : '이번 실행에선 미등장'}`);
 
   roomA.leave();
   roomB.leave();
