@@ -237,7 +237,7 @@ export function rollAugmentChoices(pool: Augment[], owned: Augment[], round: num
 // 호출부(PokerRoom)의 책임이다. 여기서는 "카드 배열이 이렇게 바뀐다"는 규칙만 계산한다.
 
 /**
- * 홀카드 배열 인덱스 — 평소엔 2장(0|1)이지만 대풍년(extra_hole_card)이 발동하면 전원이
+ * 홀카드 배열 인덱스 — 평소엔 2장(0|1)이지만 대풍년(extra_hole_card)을 보유한 본인은
  * 3장(0~2)을 받으므로 0|1로 고정하지 않는다. 실제 유효 범위(0 이상, hole.length 미만)는
  * 호출부(PokerRoom)가 대상 hole 배열의 실제 길이를 기준으로 검증한다 — 이 타입 자체는
  * 그 검증을 통과한 정수라는 의미만 가진다.

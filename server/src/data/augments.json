@@ -79,7 +79,7 @@
     "rarity": "prismatic",
     "trigger": "on_round_start",
     "effect": { "type": "extra_hole_card", "value": 1 },
-    "description": "모두가 카드를 3장씩 받는다"
+    "description": "본인의 핸드가 3장이 됩니다"
   },
   {
     "id": "aug_shaky_table",

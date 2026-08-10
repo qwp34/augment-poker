@@ -283,8 +283,9 @@ function DiamondSeat({
                     highlight={!!bestFiveIds?.has(c.id)}
                   />
                 ))
-              : // 대풍년 보유자가 있으면 전원 3장 — 상대방 카드는 쇼다운 전까지 값을 알 수 없으니
-                // holeCount(공개 동기화 필드)로 자리 개수만 정확히 맞춘다. 같은 key(idx-dealEpoch)를
+              : // 대풍년을 보유한 상대는 이 좌석만 홀카드가 3장일 수 있다 — 상대방 카드는
+                // 쇼다운 전까지 값을 알 수 없으니 holeCount(공개 동기화 필드)로 자리 개수만
+                // 정확히 맞춘다. 같은 key(idx-dealEpoch)를
                 // 유지한 채 card/hidden만 바꾸므로, 값이 채워지는 순간 마운트/언마운트 없이
                 // CSS 플립 전환(.pcard-inner)이 자연스럽게 재생된다 — 쇼다운 순차 공개의 핵심.
                 Array.from({ length: player.holeCount || 2 }, (_, idx) => idx).map((idx) => {
@@ -744,8 +745,9 @@ export function PokerTable({
   const potTotal = gameState.pot + gameState.players.reduce((sum, p) => sum + p.streetBet, 0);
   // 서버의 seatIndex/턴 순서는 건드리지 않고, 내 자리를 항상 하단으로 보이게 하는 표시 슬롯만 계산
   const mySeatIndex = myPlayer?.seatIndex ?? 0;
-  // 대풍년 — 누구 한 명이라도 홀카드가 3장이면(모두에게 동일 적용) 좌석 전체를 축소해
-  // 3장이 되어도 좌석이 테이블 바깥으로 튀어나가지 않게 한다
+  // 대풍년 — 보유자 본인만 홀카드가 3장이지만, 누구 한 명이라도 3장이면 테이블 전체
+  // 좌석을 똑같이 축소한다(그 좌석만 줄이면 좌석마다 카드 크기가 들쭉날쭉해진다).
+  // 이렇게 해야 3장이 되어도 좌석이 테이블 바깥으로 튀어나가지 않는다
   const compactHands = gameState.players.some((p) => p.holeCount > 2);
   const canAct = isMyTurn && myPlayer && !myPlayer.isFolded && !myPlayer.allIn;
   const canSwap =

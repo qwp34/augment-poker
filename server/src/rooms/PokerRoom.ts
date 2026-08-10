@@ -542,31 +542,34 @@ export class PokerRoom extends Room<PokerState> {
     // 블라인드 — 딜러 다음 두 자리가 스몰/빅 블라인드를 강제 베팅
     const { bigBlindSeat } = this.postBlinds(active);
 
-    // 전원에게 적용되는 테이블 단위 증강(대풍년/흔들리는 테이블) — 누구 한 명이라도
-    // 보유하고 있으면(소유자만이 아니라) 이번 라운드 전체 딜링 방식에 영향을 준다.
-    const anyExtraHole = active.some((p) => findByEffect(this.ownedAugments(p), 'extra_hole_card'));
+    // 흔들리는 테이블은 전원에게 적용되는 테이블 단위 증강 — 누구 한 명이라도 보유하고
+    // 있으면(소유자만이 아니라) 이번 라운드 전체 회전 여부에 영향을 준다.
     const anyRotate = active.some((p) => findByEffect(this.ownedAugments(p), 'rotate_hole_cards'));
-    const holeCount = anyExtraHole ? 3 : 2;
+    // 대풍년은 반대로 "보유한 본인만" 3장이 된다 — 테이블 단위가 아니라 플레이어별로
+    // 판정해서, 아래에서 그 사람 앞으로만 카드를 한 장 더 얹는다.
+    const extraHoleOwners = active.filter((p) => findByEffect(this.ownedAugments(p), 'extra_hole_card'));
 
-    // 대풍년 — 갑자기 홀카드가 3장으로 늘어나면 혼란스러우므로, 딜링 직전 전원에게
-    // 눈에 띄는 큰 배너로 무슨 일이 일어나는지 먼저 알린다(작은 토스트로는 부족해
-    // 별도 메시지 타입을 쓴다 — 클라이언트가 더 크고 오래 표시).
-    if (anyExtraHole) {
+    // 대풍년 — 갑자기 홀카드가 3장으로 늘어나면 혼란스러우므로, 딜링 직전 보유자 이름을
+    // 밝혀 눈에 띄는 큰 배너로 알린다(작은 토스트로는 부족해 별도 메시지 타입을 쓴다 —
+    // 클라이언트가 더 크고 오래 표시). 여러 명이 동시에 보유했으면 이름을 나열한다.
+    if (extraHoleOwners.length > 0) {
+      const names = extraHoleOwners.map((p) => p.name).join(', ');
       this.broadcast('bigAnnouncement', {
-        text: '🌾 대풍년 발동! 모든 플레이어의 홀카드가 1장씩 추가됩니다',
+        text: `🌾 ${names}님의 대풍년! 홀카드가 3장이 됩니다`,
       });
     }
 
-    // 1) 기본 딜링 — active 배열은 seatIndex 오름차순(=시계 방향) 순서다
+    // 1) 기본 딜링 — 전원 2장. active 배열은 seatIndex 오름차순(=시계 방향) 순서다
     const dealtHoles = new Map<string, Card[]>();
     for (const p of active) {
       const hole: Card[] = [];
-      for (let i = 0; i < holeCount; i++) hole.push(this.deck.pop()!);
+      for (let i = 0; i < 2; i++) hole.push(this.deck.pop()!);
       dealtHoles.set(p.sessionId, hole);
     }
 
     // 2) 흔들리는 테이블 — 방금 딜링된 손을 시계 방향으로 한 자리씩 넘긴다(내 카드는
-    // 다음 사람에게 = 나는 이전 사람의 손을 받는다)
+    // 다음 사람에게 = 나는 이전 사람의 손을 받는다). 이 시점엔 전원 2장뿐이라 항상
+    // 같은 길이 배열끼리 맞바뀐다.
     if (anyRotate && active.length > 1) {
       const rotated = new Map<string, Card[]>();
       active.forEach((p, i) => {
@@ -576,8 +579,17 @@ export class PokerRoom extends Room<PokerState> {
       for (const [sid, hole] of rotated) dealtHoles.set(sid, hole);
     }
 
-    // 3) 증강 훅 (on_shuffle / on_round_start) — 회전이 끝난 뒤, 최종적으로 내가
-    // 쥐게 된 손을 기준으로 적용한다
+    // 3) 대풍년 — 회전이 다 끝난 뒤, 보유한 "본인" 앞으로 카드를 한 장 더 얹는다. 회전
+    // 전에 먼저 3장을 만들면 흔들리는 테이블이 그 3장짜리 손 자체를 옆 사람에게
+    // 넘겨버려 소유자가 아닌 사람이 3장을 받는 사고가 난다 — 카드 매수는 항상 "누가 이
+    // 증강을 보유했는가"에 귀속돼야 하므로, 자리가 다 바뀐 뒤 소유자 신원 기준으로
+    // 마지막에 추가한다.
+    for (const p of extraHoleOwners) {
+      dealtHoles.get(p.sessionId)!.push(this.deck.pop()!);
+    }
+
+    // 4) 증강 훅 (on_shuffle / on_round_start) — 회전·대풍년이 다 끝난 뒤, 최종적으로
+    // 내가 쥐게 된 손을 기준으로 적용한다
     for (const p of active) {
       let hole = dealtHoles.get(p.sessionId)!;
       const owned = this.ownedAugments(p);

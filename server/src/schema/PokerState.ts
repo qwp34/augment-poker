@@ -44,7 +44,7 @@ export class PlayerState extends Schema {
   @type('boolean') bottomDealUsed = false;
   /** 리셋 버튼 증강 사용 여부 (라운드당 1회) */
   @type('boolean') resetBoardUsed = false;
-  /** 이번 핸드 홀카드 매수 — 평소 2장, 대풍년 보유자가 있으면 전원 3장 (뒷면 카드 개수 렌더링에 사용) */
+  /** 이번 핸드 홀카드 매수 — 평소 2장, 대풍년을 보유한 본인만 3장 (뒷면 카드 개수 렌더링에 사용) */
   @type('uint8') holeCount = 2;
   /** 마지막 액션 표시용 ("콜 200", "레이즈 +500"...) */
   @type('string') lastAction = '';
