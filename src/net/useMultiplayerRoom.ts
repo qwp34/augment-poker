@@ -592,6 +592,21 @@ export function useMultiplayerRoom(playerName: string, accessToken?: string) {
     };
   }, [room]);
 
+  // 카드 변경/시스템 알림/큰 배너/장고의 시간 연장 — 전부 "그 라운드 동안만 유효한" 1회성
+  // 브로드캐스트인데, PokerTable은 augment_select 단계 중반(augmentUiReady)에 언마운트됐다가
+  // 다음 phase에서 다시 마운트된다(MultiplayerLobby.tsx의 showTable 조건 참고). React는
+  // useEffect를 마운트 시 한 번은 무조건 실행하므로, 여기서 지워주지 않으면 리마운트 시점에
+  // 이미 처리된 지난 라운드 값이 그대로 남아 있어 알림/연출이 재생되는 버그가 있었다 —
+  // lastAugmentReveal과 동일하게 augment_select 진입 시점에 클리어한다.
+  useEffect(() => {
+    if (gameState?.phase === 'augment_select') {
+      setCardChangeEvent(null);
+      setNoticeEvent(null);
+      setBigAnnouncement(null);
+      setTurnExtendedEvent(null);
+    }
+  }, [gameState?.phase]);
+
   /** 서버가 뽑아 보낸 증강 후보 3개 중 하나를 선택해 전송 */
   const chooseAugment = useCallback(
     (augmentId: string) => {
