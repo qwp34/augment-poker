@@ -31,7 +31,7 @@
     "rarity": "prismatic",
     "trigger": "on_round_start",
     "effect": { "type": "jokerize_random", "value": 1 },
-    "description": "내 카드 1장이 조커가 된다"
+    "description": "내 카드 1장이 조커가 된다 (조커: 모든 무늬로 인정된다)"
   },
   {
     "id": "aug_royal_prophecy",
@@ -39,7 +39,7 @@
     "rarity": "gold",
     "trigger": "on_shuffle",
     "effect": { "type": "shuffle_bias", "value": 0.15 },
-    "description": "셔플 시 낮은 확률로 운명이 개입한다... (연출용 — 브로드웨이 카드가 손에 들어올 확률 소폭 상승)"
+    "description": "셔플 시 낮은 확률로 운명이 개입한다... (핸드에 좋은 카드가 들어올 확률이 15% 증가한다)"
   },
   {
     "id": "aug_sinister_eye",
@@ -47,7 +47,7 @@
     "rarity": "gold",
     "trigger": "on_hand_start",
     "effect": { "type": "reveal_opponent_card", "value": 1 },
-    "description": "매 핸드 시작 시 — 상대 1명을 지목해 그의 홀카드 1장을 나에게만 공개한다"
+    "description": "매 핸드 시작 시 — 상대 1명을 지목해 그의 핸드 1장을 볼 수 있다"
   },
   {
     "id": "aug_chameleon",
@@ -55,7 +55,7 @@
     "rarity": "prismatic",
     "trigger": "on_pick",
     "effect": { "type": "edit_own_card", "value": 1 },
-    "description": "내 카드의 무늬를 바꾼다 (딱 한 번)"
+    "description": "내 카드의 무늬와 숫자를 바꾼다 (딱 한 번)"
   },
   {
     "id": "aug_carrot",
@@ -63,15 +63,7 @@
     "rarity": "gold",
     "trigger": "on_hand_start",
     "effect": { "type": "swap_with_opponent", "value": 1 },
-    "description": "상대와 카드를 통째로 바꾼다"
-  },
-  {
-    "id": "aug_bottom_deal",
-    "name": "밑장빼기",
-    "rarity": "gold",
-    "trigger": "on_street_reveal",
-    "effect": { "type": "bottom_deal", "value": 1 },
-    "description": "라운드당 1회 — 플랍/턴/리버 공개 직전, 덱 맨 위 카드를 버리고 다음 카드를 공개할 수 있다"
+    "description": "상대와 나의 카드를 한 장 교환한다"
   },
   {
     "id": "aug_russian_roulette",
@@ -79,7 +71,7 @@
     "rarity": "prismatic",
     "trigger": "on_showdown",
     "effect": { "type": "remove_random_community", "value": 1 },
-    "description": "마지막에 바닥 카드 1장이 사라진다"
+    "description": "모든 바닥 카드가 공개될 때, 무작위로 한 장이 파괴됩니다."
   },
   {
     "id": "aug_bumper_crop",
@@ -95,7 +87,7 @@
     "rarity": "prismatic",
     "trigger": "on_round_start",
     "effect": { "type": "rotate_hole_cards", "value": 1 },
-    "description": "다음 판, 모두의 카드가 옆자리로 넘어간다"
+    "description": "모두의 카드가 옆자리로 넘어간다"
   },
   {
     "id": "aug_reset_button",
@@ -119,6 +111,6 @@
     "rarity": "prismatic",
     "trigger": "on_hand_start",
     "effect": { "type": "declare_hand", "value": 3 },
-    "description": "족보를 미리 외친다. 맞히면 3배"
+    "description": "본인이 맞출 족보를 미리 외친다. 맞히면 승리 금액의 3배를 획득한다."
   }
 ]
