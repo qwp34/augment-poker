@@ -170,7 +170,9 @@ export interface GameOverInfo {
 export interface AugmentTargetRequest {
   augmentId: string;
   effectType: 'reveal_opponent_card' | 'edit_own_card' | 'swap_with_opponent' | 'declare_hand';
-  opponents: { sessionId: string; name: string }[];
+  /** holeCount — 대풍년으로 상대 홀카드가 3장일 수 있어, "몇 번째 카드" 선택 UI를
+   *  실제 장수만큼 그리는 데 쓰인다(0/1 고정 렌더링 방지) */
+  opponents: { sessionId: string; name: string; holeCount: number }[];
 }
 
 /** 음침한 눈으로 확인한 상대 카드 — 나에게만 온다 */
@@ -189,7 +191,8 @@ export interface AugmentRevealInfo {
 export interface CardChangeEvent {
   augmentId: string;
   augmentName: string;
-  changes: { sessionId: string; playerName: string; cardIndex: 0 | 1 }[];
+  /** cardIndex — 대풍년으로 홀카드가 3장일 수 있어 0|1로 고정하지 않는다 */
+  changes: { sessionId: string; playerName: string; cardIndex: number }[];
 }
 
 const ENTRY_NOT_FOUND_MESSAGE = '입장할 수 없습니다 — 방이 존재하지 않거나 이미 종료되었습니다';
@@ -615,13 +618,14 @@ export function useMultiplayerRoom(playerName: string, accessToken?: string) {
     [room],
   );
 
-  /** 즉시형 증강의 대상(상대/카드/새 숫자·무늬/선언 족보)을 지정해 전송 — 응답 즉시 대기 화면을 닫는다 */
+  /** 즉시형 증강의 대상(상대/카드/새 숫자·무늬/선언 족보)을 지정해 전송 — 응답 즉시 대기 화면을 닫는다.
+   *  카드 인덱스들은 대풍년으로 홀카드가 3장일 수 있어 0|1로 고정하지 않는다. */
   const chooseAugmentTarget = useCallback(
     (payload: {
       targetSessionId?: string;
-      targetCardIndex?: 0 | 1;
-      ownCardIndex?: 0 | 1;
-      cardIndex?: 0 | 1;
+      targetCardIndex?: number;
+      ownCardIndex?: number;
+      cardIndex?: number;
       rank?: number;
       suit?: string;
       handType?: string;
@@ -648,9 +652,10 @@ export function useMultiplayerRoom(playerName: string, accessToken?: string) {
     [room],
   );
 
-  /** 카드 재구성 증강 — 내 홀카드 index(0|1)를 새 카드로 교체 요청 (핸드당 1회, 서버가 검증) */
+  /** 카드 재구성 증강 — 내 홀카드 index를 새 카드로 교체 요청 (대풍년이면 0~2, 핸드당 1회,
+   *  서버가 검증) */
   const swapHoleCard = useCallback(
-    (index: 0 | 1) => {
+    (index: number) => {
       room?.send('swapCard', { index });
     },
     [room],

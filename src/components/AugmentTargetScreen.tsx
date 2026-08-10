@@ -21,12 +21,20 @@ function asEngineCard(c: ClientCard): EngineCard {
 
 export interface AugmentTargetPayload {
   targetSessionId?: string;
-  targetCardIndex?: 0 | 1;
-  ownCardIndex?: 0 | 1;
-  cardIndex?: 0 | 1;
+  /** 대풍년으로 홀카드가 3장일 수 있어 0|1로 고정하지 않는다 */
+  targetCardIndex?: number;
+  ownCardIndex?: number;
+  cardIndex?: number;
   rank?: number;
   suit?: string;
   handType?: string;
+}
+
+/** "첫 번째 카드"/"두 번째 카드"... — 대풍년으로 3장까지 나올 수 있어 하드코딩 2개로는
+ *  부족하다. 정의된 범위를 넘어서면(이론상 발생하지 않지만) "N번째 카드"로 대체한다. */
+const ORDINAL_KO = ['첫 번째', '두 번째', '세 번째', '네 번째'];
+function cardOrdinalLabel(idx: number): string {
+  return `${ORDINAL_KO[idx] ?? `${idx + 1}번째`} 카드`;
 }
 
 interface AugmentTargetScreenProps {
@@ -56,8 +64,8 @@ export function AugmentTargetScreen({ request, myHole, onSubmit, onSkip }: Augme
   const [targetSessionId, setTargetSessionId] = useState<string | null>(
     opponents.length === 1 ? opponents[0].sessionId : null,
   );
-  const [targetCardIndex, setTargetCardIndex] = useState<0 | 1 | null>(null);
-  const [ownCardIndex, setOwnCardIndex] = useState<0 | 1 | null>(null);
+  const [targetCardIndex, setTargetCardIndex] = useState<number | null>(null);
+  const [ownCardIndex, setOwnCardIndex] = useState<number | null>(null);
   const [rank, setRank] = useState<Rank | null>(null);
 
   // 현재 단계에서 "골랐지만 아직 확정하지 않은" 값 — 확인을 눌러야 실제로 반영된다
@@ -91,7 +99,10 @@ export function AugmentTargetScreen({ request, myHole, onSubmit, onSkip }: Augme
 
   if (!augment) return null;
 
-  const targetName = opponents.find((o) => o.sessionId === targetSessionId)?.name ?? '';
+  const targetOpponent = opponents.find((o) => o.sessionId === targetSessionId);
+  const targetName = targetOpponent?.name ?? '';
+  // 대풍년으로 상대 홀카드가 3장일 수 있어, "몇 번째 카드" 선택지도 실제 장수만큼 그린다
+  const targetHoleCount = targetOpponent?.holeCount ?? 2;
 
   const stepHint: Record<Step, string> = {
     opponent: '대상 플레이어를 고른 뒤 확인을 누르세요',
@@ -110,7 +121,7 @@ export function AugmentTargetScreen({ request, myHole, onSubmit, onSkip }: Augme
         setTargetSessionId(draft as string);
         return;
       case 'targetCard': {
-        const idx = draft as 0 | 1;
+        const idx = draft as number;
         if (effectType === 'reveal_opponent_card') {
           onSubmit({ targetSessionId: targetSessionId!, targetCardIndex: idx });
           return;
@@ -119,7 +130,7 @@ export function AugmentTargetScreen({ request, myHole, onSubmit, onSkip }: Augme
         return;
       }
       case 'ownCard': {
-        const idx = draft as 0 | 1;
+        const idx = draft as number;
         if (effectType === 'edit_own_card') {
           setOwnCardIndex(idx);
           return;
@@ -185,14 +196,14 @@ export function AugmentTargetScreen({ request, myHole, onSubmit, onSkip }: Augme
 
           {step === 'targetCard' && (
             <div className="mp-target-choice-row">
-              {[0, 1].map((idx) => (
+              {Array.from({ length: targetHoleCount }, (_, idx) => idx).map((idx) => (
                 <button
                   key={idx}
                   className={`mp-target-card-btn${draft === idx ? ' mp-target-selected' : ''}`}
                   onClick={() => selectDraft(idx)}
                 >
                   <Card hidden size="sm" />
-                  <span>{idx === 0 ? '첫 번째 카드' : '두 번째 카드'}</span>
+                  <span>{cardOrdinalLabel(idx)}</span>
                 </button>
               ))}
             </div>
@@ -207,7 +218,7 @@ export function AugmentTargetScreen({ request, myHole, onSubmit, onSkip }: Augme
                   onClick={() => selectDraft(idx)}
                 >
                   <Card card={asEngineCard(c)} size="sm" />
-                  <span>{idx === 0 ? '첫 번째 카드' : '두 번째 카드'}</span>
+                  <span>{cardOrdinalLabel(idx)}</span>
                 </button>
               ))}
             </div>

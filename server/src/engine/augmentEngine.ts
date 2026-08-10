@@ -236,7 +236,13 @@ export function rollAugmentChoices(pool: Augment[], owned: Augment[], round: num
 // private holes 맵) 반영, 메시지 전송(누구에게 무엇을 보여줄지), 유효성 검증은 전부
 // 호출부(PokerRoom)의 책임이다. 여기서는 "카드 배열이 이렇게 바뀐다"는 규칙만 계산한다.
 
-export type HoleIndex = 0 | 1;
+/**
+ * 홀카드 배열 인덱스 — 평소엔 2장(0|1)이지만 대풍년(extra_hole_card)이 발동하면 전원이
+ * 3장(0~2)을 받으므로 0|1로 고정하지 않는다. 실제 유효 범위(0 이상, hole.length 미만)는
+ * 호출부(PokerRoom)가 대상 hole 배열의 실제 길이를 기준으로 검증한다 — 이 타입 자체는
+ * 그 검증을 통과한 정수라는 의미만 가진다.
+ */
+export type HoleIndex = number;
 
 /** 카멜레온 — 홀카드 1장을 원하는 숫자/무늬로 교체한 새 배열을 반환한다 (원본 불변) */
 export function applyEditCard(hole: readonly Card[], index: HoleIndex, rank: Rank, suit: Suit): Card[] {

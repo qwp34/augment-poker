@@ -171,8 +171,8 @@ interface DiamondSeatProps {
   community: ClientCard[];
   /** 카드 재구성 증강으로 지금 내 홀카드를 클릭해 교체할 수 있는 상태인지 (isMe 좌석에서만 의미 있음) */
   canSwap: boolean;
-  /** 카드 재구성 — 내 홀카드 index(0|1)를 새 카드로 교체 요청 (isMe 좌석에서만 의미 있음) */
-  onSwapCard: (index: 0 | 1) => void;
+  /** 카드 재구성 — 내 홀카드 index를 새 카드로 교체 요청(대풍년이면 0~2, isMe 좌석에서만 의미 있음) */
+  onSwapCard: (index: number) => void;
   /** 증강 뱃지를 클릭했을 때 — 이름/효과 설명 팝업을 띄우기 위해 상위(PokerTable)로 알린다 */
   onAugmentClick: (augmentId: string) => void;
   /** 현재 차례인 좌석에서만 사용 — 턴 타이머 테두리에 표시할 잔여/총 시간(ms) */
@@ -271,7 +271,7 @@ function DiamondSeat({
                       canSwap
                         ? () => {
                             playSound('buttonClick');
-                            onSwapCard(idx as 0 | 1);
+                            onSwapCard(idx);
                           }
                         : undefined
                     }
@@ -684,8 +684,8 @@ interface PokerTableProps {
   /** 장고의 시간 사용 — 전원에게 오는 공개 브로드캐스트(턴 타이머 링 연장 반영용) */
   turnExtendedEvent: TurnExtendedEvent | null;
   onAction: (type: BettingActionType, amount?: number) => void;
-  /** 카드 재구성 — 내 홀카드 index(0|1)를 새 카드로 교체 요청 */
-  onSwapCard: (index: 0 | 1) => void;
+  /** 카드 재구성 — 내 홀카드 index를 새 카드로 교체 요청(대풍년이면 0~2) */
+  onSwapCard: (index: number) => void;
   /** 리셋 버튼 — 본인 차례에 현재 커뮤니티 카드를 전부 회수하고 다시 딜링 요청 */
   onResetBoard: () => void;
   /** 장고의 시간 — 본인 차례에 턴 제한시간을 15초 연장 요청 */

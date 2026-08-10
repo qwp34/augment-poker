@@ -109,8 +109,16 @@ type AugmentTargetMessage = {
   handType?: unknown;
 };
 
-function toHoleIndex(value: unknown): HoleIndex | null {
-  return value === 0 || value === 1 ? value : null;
+/**
+ * value가 hole 배열의 유효한 인덱스(0 이상, hole.length 미만인 정수)인지 검사한다.
+ * 대풍년(extra_hole_card)으로 홀카드가 3장이 될 수 있어, 0/1로 하드코딩하지 않고
+ * 실제 보유 카드 수(hole.length) 기준으로 검증해야 한다 — hole이 없으면(존재하지
+ * 않는 좌석 등) 무조건 무효로 처리한다.
+ */
+function toHoleIndex(value: unknown, hole: readonly Card[] | undefined): HoleIndex | null {
+  if (!hole) return null;
+  const n = Number(value);
+  return Number.isInteger(n) && n >= 0 && n < hole.length ? n : null;
 }
 
 /**
@@ -578,7 +586,9 @@ export class PokerRoom extends Room<PokerState> {
       if (bias && Math.random() < bias.effect.value) hole = this.riggedBroadway(hole);
 
       if (findByEffect(owned, 'jokerize_random')) {
-        const idx = Math.random() < 0.5 ? 0 : 1;
+        // 대풍년으로 이 손이 3장일 수 있어, 0/1로 고정하지 않고 실제 장수(hole.length)
+        // 안에서 무작위로 고른다
+        const idx = Math.floor(Math.random() * hole.length);
         hole[idx] = { ...hole[idx], isJoker: true };
       }
 
@@ -593,12 +603,11 @@ export class PokerRoom extends Room<PokerState> {
       const shakyTable = active
         .flatMap((p) => this.ownedAugments(p))
         .find((a) => a.effect.type === 'rotate_hole_cards')!;
+      // 대풍년이 함께 발동해 홀카드가 3장일 수 있어, 0/1로 고정하지 않고 각 플레이어의
+      // 실제 holeCount만큼 글로우 대상을 만든다(안 그러면 3번째 카드엔 글로우가 안 뜬다)
       this.broadcastCardChange(
         shakyTable,
-        active.flatMap((p) => [
-          { sessionId: p.sessionId, cardIndex: 0 as const },
-          { sessionId: p.sessionId, cardIndex: 1 as const },
-        ]),
+        active.flatMap((p) => Array.from({ length: p.holeCount }, (_, i) => ({ sessionId: p.sessionId, cardIndex: i }))),
       );
     }
 
@@ -697,9 +706,11 @@ export class PokerRoom extends Room<PokerState> {
     if (!client) return;
     const augment = this.ownedAugments(p).find((a) => a.id === augmentId);
     if (!augment) return;
+    // holeCount도 함께 보낸다 — 대풍년으로 상대 홀카드가 3장일 수 있어, 클라이언트가
+    // "몇 번째 카드"를 고르는 UI를 실제 장수만큼 그릴 수 있어야 한다(0/1 고정 렌더링 방지)
     const opponents = this.actingPlayers()
       .filter((o) => o.sessionId !== p.sessionId)
-      .map((o) => ({ sessionId: o.sessionId, name: o.name }));
+      .map((o) => ({ sessionId: o.sessionId, name: o.name, holeCount: o.holeCount }));
     client.send('augmentTargetRequest', {
       augmentId: augment.id,
       effectType: augment.effect.type,
@@ -763,31 +774,40 @@ export class PokerRoom extends Room<PokerState> {
     if (!augment) return;
 
     const opponents = this.actingPlayers().filter((o) => o.sessionId !== p.sessionId);
-    const randomIndex = (): HoleIndex => (Math.random() < 0.5 ? 0 : 1);
+    // 대풍년으로 홀카드가 3장일 수 있어, 대상 hole의 실제 길이(holeLen) 안에서만 무작위로
+    // 고른다 — 0/1로 고정하면 3번째 카드는 자동 해소(봇/타임아웃) 시 절대 뽑히지 않는다
+    const randomIndex = (holeLen: number): HoleIndex => Math.floor(Math.random() * holeLen);
 
     switch (augment.effect.type) {
       case 'reveal_opponent_card': {
         const target = opponents[Math.floor(Math.random() * opponents.length)];
-        if (target) {
-          this.applyRevealCardEffect(p, { targetSessionId: target.sessionId, targetCardIndex: randomIndex() });
+        const targetHole = target && this.holes.get(target.sessionId);
+        if (target && targetHole) {
+          this.applyRevealCardEffect(p, {
+            targetSessionId: target.sessionId,
+            targetCardIndex: randomIndex(targetHole.length),
+          });
         }
         break;
       }
       case 'edit_own_card': {
         const rank = RANKS[Math.floor(Math.random() * RANKS.length)];
         const suit = SUITS[Math.floor(Math.random() * SUITS.length)];
-        this.applyEditCardEffect(p, { cardIndex: randomIndex(), rank, suit }, augment);
+        const myHole = this.holes.get(p.sessionId);
+        if (myHole) this.applyEditCardEffect(p, { cardIndex: randomIndex(myHole.length), rank, suit }, augment);
         break;
       }
       case 'swap_with_opponent': {
         const target = opponents[Math.floor(Math.random() * opponents.length)];
-        if (target) {
+        const myHole = this.holes.get(p.sessionId);
+        const targetHole = target && this.holes.get(target.sessionId);
+        if (target && myHole && targetHole) {
           this.applySwapCardEffect(
             p,
             {
               targetSessionId: target.sessionId,
-              targetCardIndex: randomIndex(),
-              ownCardIndex: randomIndex(),
+              targetCardIndex: randomIndex(targetHole.length),
+              ownCardIndex: randomIndex(myHole.length),
             },
             augment,
           );
@@ -839,13 +859,14 @@ export class PokerRoom extends Room<PokerState> {
   /** 음침한 눈 — 지정한 상대 홀카드 1장을 나에게만 전송한다. 게임 상태(this.holes)는 건드리지 않는 순수 조회 */
   private applyRevealCardEffect(p: PlayerState, message: AugmentTargetMessage): boolean {
     const targetId = typeof message.targetSessionId === 'string' ? message.targetSessionId : '';
-    const idx = toHoleIndex(message.targetCardIndex);
-    if (idx === null || !targetId || targetId === p.sessionId) return false;
+    if (!targetId || targetId === p.sessionId) return false;
     const target = this.state.players.get(targetId);
     if (!target || !this.actingPlayers().includes(target)) return false;
 
     const hole = this.holes.get(targetId);
-    if (!hole) return false;
+    // 대풍년으로 대상의 홀카드가 3장일 수 있어, hole의 실제 길이를 기준으로 인덱스를 검증한다
+    const idx = toHoleIndex(message.targetCardIndex, hole);
+    if (idx === null || !hole) return false;
     const card = revealCard(hole, idx);
 
     const client = this.clients.find((c) => c.sessionId === p.sessionId);
@@ -860,15 +881,15 @@ export class PokerRoom extends Room<PokerState> {
 
   /** 카멜레온 — 내 홀카드 1장을 원하는 숫자/무늬로 교체하고, 갱신된 홀카드를 나에게만 다시 전송 */
   private applyEditCardEffect(p: PlayerState, message: AugmentTargetMessage, augment: Augment): boolean {
-    const idx = toHoleIndex(message.cardIndex);
-    if (idx === null) return false;
+    const hole = this.holes.get(p.sessionId);
+    // 대풍년으로 내 홀카드가 3장일 수 있어, hole의 실제 길이를 기준으로 인덱스를 검증한다
+    const idx = toHoleIndex(message.cardIndex, hole);
+    if (idx === null || !hole) return false;
     const rank = Math.floor(Number(message.rank));
     if (!RANKS.includes(rank as Rank)) return false;
     const suit = message.suit;
     if (typeof suit !== 'string' || !SUITS.includes(suit as Suit)) return false;
 
-    const hole = this.holes.get(p.sessionId);
-    if (!hole) return false;
     this.holes.set(p.sessionId, applyEditCard(hole, idx, rank as Rank, suit as Suit));
     this.sendHole(p.sessionId);
     this.broadcastCardChange(augment, [{ sessionId: p.sessionId, cardIndex: idx }]);
@@ -882,13 +903,15 @@ export class PokerRoom extends Room<PokerState> {
     const target = this.state.players.get(targetId);
     if (!target || !this.actingPlayers().includes(target)) return false;
 
-    const tIdx = toHoleIndex(message.targetCardIndex);
-    const oIdx = toHoleIndex(message.ownCardIndex);
-    if (tIdx === null || oIdx === null) return false;
-
     const myHole = this.holes.get(p.sessionId);
     const theirHole = this.holes.get(targetId);
     if (!myHole || !theirHole) return false;
+
+    // 대풍년으로 양쪽 다(또는 한쪽만) 3장일 수 있어, 각자의 실제 hole 길이를 기준으로
+    // 인덱스를 독립적으로 검증한다
+    const tIdx = toHoleIndex(message.targetCardIndex, theirHole);
+    const oIdx = toHoleIndex(message.ownCardIndex, myHole);
+    if (tIdx === null || oIdx === null) return false;
 
     const { mine, theirs } = swapCards(myHole, theirHole, oIdx, tIdx);
     this.holes.set(p.sessionId, mine);
@@ -1466,12 +1489,15 @@ export class PokerRoom extends Room<PokerState> {
     if (!augment) return this.reject(client, '카드 재구성 증강이 없습니다');
     if (p.swapUsed) return this.reject(client, '이번 핸드에 이미 교체했습니다');
 
-    const index = Math.floor(Number(message?.index));
-    if (index !== 0 && index !== 1) return this.reject(client, '카드 인덱스는 0 또는 1이어야 합니다');
-
     const hole = this.holes.get(client.sessionId);
+    // 대풍년으로 홀카드가 3장일 수 있어, 0/1로 하드코딩하지 않고 실제 보유 카드 수
+    // (hole.length) 기준으로 검증한다 — 그래야 3번째 카드도 정상적으로 교체된다
+    const index = Math.floor(Number(message?.index));
+    if (!hole || !Number.isInteger(index) || index < 0 || index >= hole.length)
+      return this.reject(client, `카드 인덱스는 0~${(hole?.length ?? 2) - 1} 사이여야 합니다`);
+
     const newCard = this.deck.pop();
-    if (!hole || !newCard) return;
+    if (!newCard) return;
     hole[index] = newCard;
     p.swapUsed = true;
     this.sendHole(client.sessionId);
