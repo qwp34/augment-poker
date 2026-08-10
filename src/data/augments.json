@@ -31,7 +31,7 @@
     "rarity": "prismatic",
     "trigger": "on_round_start",
     "effect": { "type": "jokerize_random", "value": 1 },
-    "description": "매 핸드 시작 시 내 홀카드 1장이 조커가 된다 (모든 무늬로 인정)"
+    "description": "내 카드 1장이 조커가 된다"
   },
   {
     "id": "aug_royal_prophecy",
@@ -55,7 +55,7 @@
     "rarity": "prismatic",
     "trigger": "on_pick",
     "effect": { "type": "edit_own_card", "value": 1 },
-    "description": "최초 선택 시 1회 — 내 홀카드 1장을 원하는 숫자/무늬로 자유롭게 바꾼다 (그 뒤로는 재발동하지 않음)"
+    "description": "내 카드의 무늬를 바꾼다 (딱 한 번)"
   },
   {
     "id": "aug_carrot",
@@ -63,7 +63,7 @@
     "rarity": "gold",
     "trigger": "on_hand_start",
     "effect": { "type": "swap_with_opponent", "value": 1 },
-    "description": "매 핸드 시작 시 — 상대 1명을 지목해 내 홀카드 1장과 상대 홀카드 1장을 맞바꾼다"
+    "description": "상대와 카드를 통째로 바꾼다"
   },
   {
     "id": "aug_bottom_deal",
@@ -79,7 +79,7 @@
     "rarity": "prismatic",
     "trigger": "on_showdown",
     "effect": { "type": "remove_random_community", "value": 1 },
-    "description": "쇼다운 시 무작위 커뮤니티 카드 1장이 제외된 채로 전원의 족보를 판정한다 (누구에게나 동일하게 적용)"
+    "description": "마지막에 바닥 카드 1장이 사라진다"
   },
   {
     "id": "aug_bumper_crop",
@@ -87,7 +87,7 @@
     "rarity": "prismatic",
     "trigger": "on_round_start",
     "effect": { "type": "extra_hole_card", "value": 1 },
-    "description": "이번 라운드 모든 플레이어의 홀카드가 1장씩 추가된다 (3장으로 플레이, 최고 5장 조합은 동일)"
+    "description": "모두가 카드를 3장씩 받는다"
   },
   {
     "id": "aug_shaky_table",
@@ -95,7 +95,7 @@
     "rarity": "prismatic",
     "trigger": "on_round_start",
     "effect": { "type": "rotate_hole_cards", "value": 1 },
-    "description": "라운드 시작 시 모든 플레이어의 홀카드가 시계 방향으로 한 자리씩 넘어간다 (내 카드는 다음 사람에게)"
+    "description": "다음 판, 모두의 카드가 옆자리로 넘어간다"
   },
   {
     "id": "aug_reset_button",
@@ -103,7 +103,7 @@
     "rarity": "prismatic",
     "trigger": "on_turn",
     "effect": { "type": "reset_board", "value": 1 },
-    "description": "라운드 중 1회, 본인 차례에 현재 커뮤니티 카드를 전부 회수하고 다시 딜링한다 (베팅/팟은 그대로). 플랍(3번째 보드 카드) 공개 시점까지만 사용 가능"
+    "description": "바닥 카드를 전부 다시 깐다"
   },
   {
     "id": "aug_deep_think",
@@ -119,6 +119,6 @@
     "rarity": "prismatic",
     "trigger": "on_hand_start",
     "effect": { "type": "declare_hand", "value": 3 },
-    "description": "매 핸드 프리플랍 베팅 전, 이번 판에 완성할 목표 족보를 선언한다(다른 플레이어에게도 공개). 선언한 족보와 정확히 일치하는 패로 쇼다운에서 승리하면 획득한 팟의 3배를 보너스로 추가 지급받는다. 다르면 보너스 없음"
+    "description": "족보를 미리 외친다. 맞히면 3배"
   }
 ]
