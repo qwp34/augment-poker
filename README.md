@@ -172,8 +172,8 @@ augment-poker/
 │   │   ├── equity.ts            # 몬테카를로 승률 계산 (봇 판단 + 화면 표시 공용)
 │   │   ├── augmentEngine.ts     # JSON 기반 증강 룰 엔진
 │   │   └── botAI.ts             # 싱글플레이 봇 베팅 결정 (에퀴티 vs 팟오즈)
-│   ├── data/augments.json     # 증강 정의 — 여기 항목 추가만으로 증강이 늘어남
 │   ├── data/augmentRarityTable.json # 라운드별 등급(실버/골드/프리즘) 등장 확률 — 숫자만 바꾸면 밸런스 조정
+│   │   (증강 정의 augments.json은 여기 두지 않음 — server/src/data/augments.json을 그대로 import해서 쓴다)
 │   ├── store/gameStore.ts     # Zustand — 싱글플레이 상태 머신
 │   ├── net/                   # 멀티플레이 연결
 │   │   ├── colyseusClient.ts    # Colyseus 클라이언트 싱글톤, 방 공유 링크 유틸
@@ -196,7 +196,7 @@ augment-poker/
     │   ├── rooms/PokerRoom.ts   # 입장/퇴장·블라인드·딜링·베팅·증강 phase·쇼다운·타임아웃 (핵심 로직)
     │   ├── engine/               # 서버 측 게임 로직 (+ *.test.ts 유닛 테스트)
     │   │                          #   equity.ts는 클라이언트 사본과 동일본
-    │   └── data/augments.json, augmentRarityTable.json
+    │   └── data/augments.json, augmentRarityTable.json  # augments.json은 클라이언트도 여기서 직접 import (단일 소스)
     └── scripts/
         ├── smoke.ts             # 클라이언트 2명을 실제로 접속시켜 전체 루프를 검증하는 통합 테스트
         └── selfplay.ts          # 봇끼리 자동 대전시켜 임계값을 측정하는 튜닝 하네스

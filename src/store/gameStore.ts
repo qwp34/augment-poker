@@ -15,7 +15,9 @@ import {
   rollAugmentChoices,
 } from '../engine/augmentEngine';
 import { decideBotAction, type BotPersona } from '../engine/botAI';
-import augmentsData from '../data/augments.json';
+// 증강 정의는 서버(server/src/data/augments.json)를 단일 소스로 참조한다 —
+// 여기 따로 사본을 두지 않는다. 텍스트/효과를 고치려면 그 파일 하나만 수정하면 된다.
+import augmentsData from '../../server/src/data/augments.json';
 
 // 대상 지정이 필요한 증강(음침한 눈/카멜레온/당근이세요?)은 대상 지정이 필요한 멀티플레이 전용
 // 흐름으로만 구현돼 있다 — 로컬 싱글플레이는 아직 그 효과를 실행할 수 없으므로

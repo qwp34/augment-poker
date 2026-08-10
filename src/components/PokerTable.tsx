@@ -3,7 +3,9 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { Card } from './Card';
 import { AugmentCard } from './AugmentCard';
 import { EquityBadge } from './EquityBadge';
-import augmentsData from '../data/augments.json';
+// 증강 정의는 서버(server/src/data/augments.json)를 단일 소스로 참조한다 —
+// 여기 따로 사본을 두지 않는다. 텍스트/효과를 고치려면 그 파일 하나만 수정하면 된다.
+import augmentsData from '../../server/src/data/augments.json';
 import { RARITY_NAMES_KO, type Augment } from '../engine/augmentEngine';
 import { evaluateBest, CATEGORY_NAMES_KO, HAND_CATEGORY_ORDER, type HandCategory } from '../engine/handEvaluator';
 import type { Card as EngineCard } from '../engine/types';
